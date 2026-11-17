@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Панельки</title><link rel="icon" href="data:,">
+<style>
+  :root { --panel: rgba(28, 31, 36, .78); --line: rgba(255,255,255,.1); --text: #eef0f2; --dim: #a9b0b8; --accent: #ffd75e; }
+  html, body { margin: 0; height: 100%; background: #c3d0da; overflow: hidden; font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; color: var(--text); user-select: none; -webkit-user-select: none; }
+  canvas { display: block; touch-action: none; -webkit-touch-callout: none; }
+  button, input { touch-action: manipulation; }
+  #touchbar { position: fixed; right: 12px; bottom: 50%; transform: translateY(50%); display: none; flex-direction: column; gap: 8px; }
+  body.touch #touchbar { display: flex; }
+  #touchbar button { width: 58px; height: 58px; border-radius: 50%; border: 1px solid var(--line); background: var(--panel); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); color: var(--text); font-size: 12px; box-shadow: 0 4px 16px rgba(0,0,0,.2); }
+  #touchbar #t-done { background: rgba(255, 215, 94, .9); color: #222; font-weight: 600; }
+  #touchbar #t-orbit.on { background: rgba(122, 216, 255, .85); color: #111; }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  .panel { background: var(--panel); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 6px 24px rgba(0,0,0,.18); }
+  #title { position: fixed; left: 16px; top: 14px; padding: 8px 14px; display: flex; gap: 10px; align-items: baseline; }
+  #title b { font-size: 16px; letter-spacing: .02em; } #title span { color: var(--dim); }
+  #helpbtn { background: none; border: 1px solid var(--line); border-radius: 50%; width: 22px; height: 22px; padding: 0; color: var(--dim); }
+  #topright { position: fixed; right: 16px; top: 14px; padding: 5px; display: flex; gap: 4px; }
+  #topright button { background: none; border: 0; border-radius: 9px; padding: 6px 10px; color: var(--text); }
+  #topright button:hover { background: rgba(255,255,255,.1); }
+  #stats { position: fixed; right: 16px; top: 62px; color: #e6e9ec; font-size: 12px; background: rgba(28,31,36,.55); padding: 3px 10px; border-radius: 99px; } #stats:empty { display: none; }
+  #dock { position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 8px; max-width: calc(100vw - 32px); }
+  #hint { color: #e6e9ec; font-size: 12.5px; text-align: center; background: rgba(28,31,36,.55); padding: 3px 12px; border-radius: 99px; }
+  #sub { padding: 6px; display: flex; gap: 4px; flex-wrap: wrap; justify-content: center; align-items: center; }
+  .chip { background: none; border: 0; border-radius: 9px; padding: 5px 10px 5px 7px; display: flex; align-items: center; gap: 6px; color: var(--dim); }
+  .chip:hover { background: rgba(255,255,255,.08); color: var(--text); }
+  .chip.on { background: rgba(255,255,255,.16); color: var(--text); }
+  .sw { width: 16px; height: 16px; border-radius: 5px; display: inline-block; box-shadow: inset 0 0 0 1px rgba(0,0,0,.25); }
+  .sw.dice { box-shadow: none; font-style: normal; font-size: 17px; line-height: 16px; text-align: center; }
+  .sz { display: flex; align-items: center; gap: 8px; padding: 0 10px; color: var(--dim); } .sz b { font-weight: 500; color: var(--text); min-width: 36px; }
+  .sep { width: 1px; align-self: stretch; margin: 4px 4px; background: var(--line); }
+  .sz input { width: 110px; accent-color: var(--accent); }
+  #bar { padding: 6px; display: flex; gap: 2px; overflow-x: auto; max-width: 100%; }
+  .tool { position: relative; background: none; border: 0; border-radius: 10px; width: 68px; height: 58px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: var(--dim); flex: none; }
+  .tool svg { width: 24px; height: 24px; } .tool span { font-size: 11.5px; }
+  .tool kbd { position: absolute; top: 4px; right: 6px; font: 10px system-ui; opacity: .45; }
+  .tool:hover { background: rgba(255,255,255,.08); color: var(--text); }
+  .tool.on { background: rgba(255, 215, 94, .16); color: var(--accent); }
+  #tip { position: fixed; pointer-events: none; background: rgba(20,22,26,.85); padding: 5px 9px; border-radius: 8px; font-weight: 600; white-space: nowrap; }
+  #tip small { display: block; font-weight: 400; color: var(--dim); font-size: 11.5px; }
+  #help { position: fixed; left: 16px; top: 62px; padding: 12px 16px; display: none; width: 300px; color: var(--dim); }
+  #help.open { display: block; } #help b { color: var(--text); font-weight: 600; } #help p { margin: 0 0 8px; }
+  #help kbd { background: rgba(255,255,255,.12); border-radius: 4px; padding: 0 5px; color: var(--text); font: 11.5px system-ui; }
+  #flash { position: fixed; left: 50%; top: 22px; transform: translate(-50%, -8px); opacity: 0; transition: .25s; padding: 8px 16px; pointer-events: none; }
+  #flash.show { opacity: 1; transform: translate(-50%, 0); }
+  body.clean #title, body.clean #topright, body.clean #dock, body.clean #stats, body.clean #help, body.clean #tip { display: none !important; }
+  body.clean #touchbar { display: none !important; }
+  @media (max-width: 640px) {
+    .tool { width: 50px; height: 50px; } .tool span { font-size: 10px; } .tool svg { width: 21px; height: 21px; } .tool kbd { display: none; }
+    #title span { display: none; } #title { padding: 6px 10px; } #topright { top: 10px; right: 10px; } #topright button { padding: 6px 7px; font-size: 12px; } #title { top: 10px; left: 10px; }
+    #stats { display: none; } #hint { font-size: 11px; padding: 2px 10px; }
+    #dock { bottom: calc(8px + env(safe-area-inset-bottom)); gap: 6px; }
+    #sub { flex-wrap: nowrap; overflow-x: auto; justify-content: flex-start; max-width: calc(100vw - 16px); scrollbar-width: none; } .chip { flex: none; } .sz { flex: none; }
+    #bar { max-width: calc(100vw - 16px); }
+    #help { width: auto; right: 10px; left: 10px; max-height: 60vh; overflow: auto; top: 54px; }
+    #touchbar { right: 8px; } #touchbar button { width: 52px; height: 52px; }
+  }
+</style>
+<script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }</script>
+</head><body>
+<div id="title" class="panel"><b>Панельки</b><span>build a microdistrict</span><button id="helpbtn" title="Controls">?</button></div>
+<div id="topright" class="panel"><button id="undo" title="Undo (Ctrl/⌘ Z)">Undo</button><button id="redo" title="Redo (Ctrl/⌘ Shift Z)">Redo</button><button id="photo" title="Save a picture (P)">Photo</button><button id="new" title="Start over (undoable)">New</button></div>
+<div id="stats"></div>
+<div id="help" class="panel">
+  <p><b>On a phone</b> one finger uses the tool · two fingers: pinch to zoom, drag to slide, twist to turn · <i>Orbit</i> makes one finger turn and tilt the camera · after drawing a block drag up or down for floors and tap (or <i>Done</i>) to build</p>
+  <p><b>Camera</b> right-drag to turn · middle-drag or <kbd>Shift</kbd>+right-drag to slide · wheel to zoom · <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move · <kbd>Q</kbd><kbd>E</kbd> turn</p>
+  <p><b>Build</b> drag along the first wall, then swing the mouse out sideways to make the block wider; release, move up for floors and click. Start on a roof to build on top.</p>
+  <p><b>Push and pull</b> drag any wall: only that wall moves, out or in; drag an end wall to lengthen or shorten. With Floors (<kbd>4</kbd>), drag a roof up or down.</p>
+  <p><b>Extrude</b> (<kbd>9</kbd>) drag across a wall to choose panels, then drag from them. In <i>Build out</i> mode dragging out builds a box onto the wall (a bay, a wing, a bridge); in <i>Dig</i> mode dragging in digs them out (a loggia; right through: a hole, or an arch at the bottom). Holes may overlap. Straight blocks only.</p>
+  <p><b>Step back</b> grab a roof edge and drag inward to stack a smaller copy on top: an end edge trims that end, a long edge moves that wall in, a corner steps in all round (a pyramid). On a straight block it then stays editable: drag its walls, or drag its middle to slide it (it snaps to centred and flush); click beside it to go on to floors.</p>
+  <p><b>Snapping</b> <kbd>G</kbd> grid on/off · <kbd>Shift</kbd>+<kbd>G</kbd> turns the grid to the block under the cursor. New blocks also line up with the ones around them (pink guides). Hold <kbd>Alt</kbd> for free angles and lengths.</p>
+  <p><b>Keys</b> <kbd>1</kbd>–<kbd>8</kbd> tools · <kbd>Esc</kbd> cancel · <kbd>Del</kbd> knock down the block under the cursor · <kbd>[</kbd> <kbd>]</kbd> brush size · <kbd>H</kbd> hide interface · <kbd>P</kbd> photo</p>
+  <p>Your town is saved in this browser automatically.</p>
+</div>
+<div id="dock"><div id="hint"></div><div id="sub" class="panel"></div><div id="bar" class="panel"></div></div>
+<div id="touchbar"><button id="t-done">Done</button><button id="t-cancel">Cancel</button><button id="t-orbit" title="One finger turns the camera">Orbit</button></div>
+<div id="tip" style="display:none"></div><div id="flash" class="panel"></div>
+<script type="module" src="./sandbox.js"></script>
+</body></html>

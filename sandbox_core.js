@@ -289,7 +289,8 @@ function terraceSnap(b, raw) {
   let v = mode === "side" ? Math.round(raw / kit.E4) * kit.E4 : Math.round(raw / m) * m;
   if (b.closed) return v;
   const tol = tolAt(draft.grab, draft.y), lay = cache.get(b.id).lay; let best = null;
-  const consider = (t, g) => { if (Math.abs(t) > 0.05 && Math.abs(t - raw) < tol && Math.abs(t - raw) < Math.abs(v - raw) && (!best || Math.abs(t - raw) < Math.abs(best.t - raw))) best = { t, g }; };
+  const consider = (t, g) => { if (mode !== "side" && Math.abs(t / m - Math.round(t / m)) > 0.02) return;   // an end only stops on a panel joint below
+    if (Math.abs(t) > 0.05 && Math.abs(t - raw) < tol && Math.abs(t - raw) < Math.abs(v - raw) && (!best || Math.abs(t - raw) < Math.abs(best.t - raw))) best = { t, g }; };
   if (mode === "side") {                          // the wall moving in meets a parallel guide line
     const F = draft.k > 0 ? lay.Lp : lay.Rp, w0 = F[0], wu = V.norm(V.sub(F[F.length - 1], F[0]));
     for (const l of features().lines) { if (Math.abs(l.u[0] * wu[1] - l.u[1] * wu[0]) > 0.03) continue; const t = V.dot(V.sub(l.a, w0), draft.n); consider(t, line(l, along(l, draft.grab))); }
@@ -402,15 +403,16 @@ function placeDrag() {
   const p = onPlane(draft.y); if (!p) return; const g = draft.drag, [s, w] = placeLocal(p), ds = s - g.s, dw = w - g.w, b0 = g.box0, F = draft.F, tol = tolAt(p, draft.y);
   const m = F.L / Math.max(1, Math.round(F.L / W)), b = { ...b0 }, whys = [], B = draft.bounds || { s0: 0, s1: F.L, w0: -F.D / 2, w1: F.D / 2 };
   const S = (v, c, st) => { const r = snapCoord(v, c, st, tol); if (r.why) whys.push(r.why); return r.v; };
+  const J = (cs) => cs.filter(([c]) => Math.abs(c / m - Math.round(c / m)) < 0.02);   // along: only spots on a panel joint below (else the panels would not line up)
   // across, wall positions go in whole end-wall panels counted from the right wall below (so widths stay whole panels)
   const wq = (v) => -F.D / 2 + Math.round((v + F.D / 2) / (kit.E4 / 2)) * (kit.E4 / 2);
-  if (g.h === "s0") b.s0 = Math.min(S(b0.s0 + ds, [[B.s0, "flush"], [B.s0 + B.s1 - b0.s1, "centred"]], m), b0.s1 - W);
-  else if (g.h === "s1") b.s1 = Math.max(S(b0.s1 + ds, [[B.s1, "flush"], [B.s0 + B.s1 - b0.s0, "centred"]], m), b0.s0 + W);
+  if (g.h === "s0") b.s0 = Math.min(S(b0.s0 + ds, J([[B.s0, "flush"], [B.s0 + B.s1 - b0.s1, "centred"]]), m), b0.s1 - W);
+  else if (g.h === "s1") b.s1 = Math.max(S(b0.s1 + ds, J([[B.s1, "flush"], [B.s0 + B.s1 - b0.s0, "centred"]]), m), b0.s0 + W);
   else if (g.h === "w0") b.w0 = Math.min(S(b0.w0 + dw, [[B.w0, "flush"], [B.w0 + B.w1 - b0.w1, "centred"]], kit.E4 / 2), b0.w1 - kit.E4);
   else if (g.h === "w1") b.w1 = Math.max(S(b0.w1 + dw, [[B.w1, "flush"], [B.w0 + B.w1 - b0.w0, "centred"]], kit.E4 / 2), b0.w0 + kit.E4);
   else {                                           // slide
     const len = b0.s1 - b0.s0, wid = b0.w1 - b0.w0;
-    const ns = S(b0.s0 + ds, [[B.s0, "flush"], [B.s1 - len, "flush"], [(B.s0 + B.s1 - len) / 2, "centred"]], m), nw = S(b0.w0 + dw, [[B.w0, "flush"], [B.w1 - wid, "flush"], [(B.w0 + B.w1 - wid) / 2, "centred"]], kit.E4 / 2);
+    const ns = S(b0.s0 + ds, J([[B.s0, "flush"], [B.s1 - len, "flush"], [(B.s0 + B.s1 - len) / 2, "centred"]]), m), nw = S(b0.w0 + dw, [[B.w0, "flush"], [B.w1 - wid, "flush"], [(B.w0 + B.w1 - wid) / 2, "centred"]], kit.E4 / 2);
     b.s0 = ns; b.s1 = ns + len; b.w0 = nw; b.w1 = nw + wid;
   }
   if (!mouse.alt && (g.h === "w0" || g.h === "w1") && !whys.length) { b.w0 = g.h === "w0" ? wq(b.w0) : b.w0; b.w1 = g.h === "w1" ? wq(b.w1) : b.w1; }

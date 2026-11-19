@@ -5765,16 +5765,16 @@
     "id": 8,
     "pts": [
      [
-      -54.94,
+      -54.4,
       20.1
      ],
      [
-      13.34,
+      12.8,
       20.1
      ]
     ],
     "closed": false,
-    "D": 9.27,
+    "D": 8.2,
     "fl": 2,
     "fin": "tiles_beige",
     "parent": 2
@@ -5783,7 +5783,7 @@
   "draft": null,
   "seen": [
    "step back all round | drag inward: shorter and narrower on top, like a pyramid",
-   "step in 5.9 m \u00b7 9.3 m wide | walls in line \u00b7 release, then adjust it",
+   "step in 6.4 m \u00b7 2 panels each end \u00b7 8.2 m wide | release, then adjust it",
    "2 floors | move up or down \u00b7 click to build \u00b7 Esc to cancel"
   ]
  },
@@ -6652,16 +6652,16 @@
     "id": 8,
     "pts": [
      [
-      -54.94,
+      -54.4,
       20.1
      ],
      [
-      13.34,
+      12.8,
       20.1
      ]
     ],
     "closed": false,
-    "D": 9.27,
+    "D": 8.2,
     "fl": 2,
     "fin": "tiles_beige",
     "parent": 2
@@ -7538,16 +7538,16 @@
     "id": 8,
     "pts": [
      [
-      -54.94,
+      -54.4,
       20.1
      ],
      [
-      13.34,
+      12.8,
       20.1
      ]
     ],
     "closed": false,
-    "D": 9.27,
+    "D": 8.2,
     "fl": 2,
     "fin": "tiles_beige",
     "parent": 2
@@ -8457,16 +8457,16 @@
     "id": 8,
     "pts": [
      [
-      -54.94,
+      -54.4,
       20.1
      ],
      [
-      13.34,
+      12.8,
       20.1
      ]
     ],
     "closed": false,
-    "D": 9.27,
+    "D": 8.2,
     "fl": 2,
     "fin": "tiles_beige",
     "parent": 2
@@ -9383,16 +9383,16 @@
     "id": 8,
     "pts": [
      [
-      -54.94,
+      -54.4,
       20.1
      ],
      [
-      13.34,
+      12.8,
       20.1
      ]
     ],
     "closed": false,
-    "D": 9.27,
+    "D": 8.2,
     "fl": 2,
     "fin": "tiles_beige",
     "parent": 2
@@ -10309,16 +10309,16 @@
     "id": 8,
     "pts": [
      [
-      -54.94,
+      -54.4,
       20.1
      ],
      [
-      13.34,
+      12.8,
       20.1
      ]
     ],
     "closed": false,
-    "D": 9.27,
+    "D": 8.2,
     "fl": 2,
     "fin": "tiles_beige",
     "parent": 2
@@ -11257,16 +11257,16 @@
     "id": 8,
     "pts": [
      [
-      -54.94,
+      -54.4,
       20.1
      ],
      [
-      13.34,
+      12.8,
       20.1
      ]
     ],
     "closed": false,
-    "D": 9.27,
+    "D": 8.2,
     "fl": 2,
     "fin": "brick_red",
     "parent": 2
@@ -11767,16 +11767,16 @@
     "id": 8,
     "pts": [
      [
-      -54.94,
+      -54.4,
       20.1
      ],
      [
-      13.34,
+      12.8,
       20.1
      ]
     ],
     "closed": false,
-    "D": 9.27,
+    "D": 8.2,
     "fl": 2,
     "fin": "brick_red",
     "parent": 2
@@ -12711,16 +12711,16 @@
     "id": 8,
     "pts": [
      [
-      -54.94,
+      -54.4,
       20.1
      ],
      [
-      13.34,
+      12.8,
       20.1
      ]
     ],
     "closed": false,
-    "D": 9.27,
+    "D": 8.2,
     "fl": 2,
     "fin": "brick_red",
     "parent": 2
@@ -13209,16 +13209,16 @@
     "id": 8,
     "pts": [
      [
-      -54.94,
+      -54.4,
       20.1
      ],
      [
-      13.34,
+      12.8,
       20.1
      ]
     ],
     "closed": false,
-    "D": 9.27,
+    "D": 8.2,
     "fl": 2,
     "fin": "brick_red",
     "parent": 2
@@ -14135,16 +14135,16 @@
     "id": 8,
     "pts": [
      [
-      -54.94,
+      -54.4,
       20.1
      ],
      [
-      13.34,
+      12.8,
       20.1
      ]
     ],
     "closed": false,
-    "D": 9.27,
+    "D": 8.2,
     "fl": 2,
     "fin": "brick_red",
     "parent": 2

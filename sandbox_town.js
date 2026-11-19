@@ -149,7 +149,8 @@ export function createTown(dims, state) {
     const ds = V.dot(delta, F.u), dw = V.dot(delta, F.lf), whys = [];
     const snap = (v, cands, step, base) => { let best = null; for (const [c, why] of cands) if (Math.abs(c - v) < tol && (!best || Math.abs(c - v) < Math.abs(best[0] - v))) best = [c, why];
       if (best) { whys.push(best[1]); return best[0]; } return base + Math.round((v - base) / step) * step; };
-    const ns = snap(s0 + ds, [[0, "flush"], [F.L - len, "flush"], [(F.L - len) / 2, "centred"]], m, 0);
+    const joint = (v) => Math.abs(v / m - Math.round(v / m)) < 0.02;      // along: only on a panel joint below, so the panels line up
+    const ns = snap(s0 + ds, [[0, "flush"], [F.L - len, "flush"], [(F.L - len) / 2, "centred"]].filter(([c]) => joint(c)), m, 0);
     const nw = snap(w0 + dw, [[-F.D / 2, "flush"], [F.D / 2 - wid, "flush"], [-wid / 2, "centred"]], E4 / 2, -F.D / 2);
     return { delta: V.add(V.mul(F.u, ns - s0), V.mul(F.lf, nw - w0)), why: [...new Set(whys)].join(" · ") };
   }

@@ -120,3 +120,12 @@ test("translate moves the block, what stands on it and its trees", () => {
   T.translate(1, [10, 5]);
   assert.deepEqual(S.blocks.map((b) => b.pts[0]), [[10, 5], [10, 5], [0, 50]]); assert.deepEqual([S.trees[0].x, S.trees[1].x], [11, 1]);
 });
+
+test("a tier is only centred along its roof where that keeps its panels over the panels below", () => {
+  const odd = townOf([block({ pts: [[0, 0], [14 * W, 0]] }), block({ id: 2, parent: 1, pts: [[0, 0], [7 * W, 0]] })]);
+  const r = odd.T.tierMove(odd.T.byId.get(2), odd.T.byId.get(1), [3.5 * W, 0], 1);    // 7 on 14: centred would be 3.5 panels in
+  assert.ok(!r.why.includes("centred") || Math.abs(r.delta[0] / W - Math.round(r.delta[0] / W)) < 1e-6);
+  assert.ok(Math.abs(r.delta[0] / W - Math.round(r.delta[0] / W)) < 1e-6, `on a joint: ${r.delta[0] / W} panels`);
+  const even = townOf([block({ pts: [[0, 0], [14 * W, 0]] }), block({ id: 2, parent: 1, pts: [[0, 0], [6 * W, 0]] })]);
+  const e = even.T.tierMove(even.T.byId.get(2), even.T.byId.get(1), [3.9 * W, 0], 1); assert.ok(near(e.delta[0], 4 * W) && e.why.includes("centred"));
+});

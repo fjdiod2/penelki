@@ -10,6 +10,7 @@ import { createTown, MIN_D, sameWall } from "./sandbox_town.js";
 import { roadQuad, endExt, kerbs, snapToRoads, roadAt, roadProps, KERB } from "./sandbox_streets.js";
 import { createProps } from "./props.js";
 import { entranceDetails, facadeDishes, roofAntennas, PATH_W } from "./sandbox_details.js";
+import { yardCells, yardLayout, CELL } from "./sandbox_yards.js";
 import { createTrees, createGround, TREE_NAMES, TREE_SETS, LAND, WATER_Y } from "./sandbox_nature.js";
 
 const Q = new URLSearchParams(location.search);
@@ -68,7 +69,7 @@ function showGuides(list, y, at) {                // magenta lines for what the 
 const dotGeo = new THREE.CircleGeometry(1, 20).rotateX(-Math.PI / 2);
 
 // ---------------------------------------------------------------- the town
-let S = { blocks: [], trees: [], roads: [], nextId: 1 };
+let S = { blocks: [], trees: [], roads: [], yards: [], nextId: 1 };
 const town = createTown(kit, () => S);                 // the rules (sandbox_town.js), sharing S
 const { byId, reindex, isGround, baseOf, topOf, subtree, holeAt, inSign, terracePts, wallFrame, selBox, digCut } = town;
 const treeY = (t) => (t.b && byId.has(t.b) ? (t.f != null ? baseOf(byId.get(t.b)) + (isGround(byId.get(t.b)) ? PL : 0) + t.f * H : topOf(byId.get(t.b))) : ground.waterDepth(t.x, t.z) > 0 ? WATER_Y - 0.1 : 0);   // trees in water stand on its bottom
@@ -145,21 +146,28 @@ function blockDetails(free) {
       || (u && holes.some((r) => { const d = V.sub(q, b.pts[0]), s1 = V.dot(d, u), w1 = V.dot(d, V.left(u)); return s1 > r.s0 - 2 && s1 < r.s1 + 2 && w1 > r.w0 - 2 && w1 < r.w1 + 2; }));
     items.push(...roofAntennas(b, lay.top, exits, b.seed, open));
   }
-  const ent = entranceDetails(es, { roads: S.roads, blocks: S.blocks, free });
-  return { items: [...items, ...ent.items], paths: ent.paths };
+  return { items, es };
 }
+let yardRegions = [], allRoads = [];               // the yards as worked out now ({ y, Y }), and the roads with their driveways
 function rebuildStreets(force = false) {
-  const key = JSON.stringify([S.roads, S.blocks]);
+  const key = JSON.stringify([S.roads, S.blocks, S.yards]);
   if (!force && key === streetKey) return; streetKey = key;
   if (streetObj) { streetRoot.remove(streetObj); kit.disposeGroup(streetObj); streetObj = null; }
-  detailPaths = [];
+  detailPaths = []; yardRegions = []; allRoads = S.roads;
   if (!S.roads.length && !S.blocks.length) return;
-  streetObj = new THREE.Group(); if (S.roads.length) streetObj.add(roadMesh(S.roads, S.roads));
+  const free = (p) => ground.waterDepth(p[0], p[1]) <= 0, det = blockDetails(free), items = [...det.items], yardRoads = [];
+  for (const y of S.yards) {                        // each yard: its shape now, and what is laid out in it
+    const Y = yardCells(y.p, { blocks: S.blocks, roads: S.roads, free }); if (!Y) continue; yardRegions.push({ y, Y });
+    const L = yardLayout(Y, { id: y.id, seed: y.seed, entrances: det.es, blocks: S.blocks, roads: [...S.roads, ...yardRoads], free });
+    yardRoads.push(...L.roads); items.push(...L.items);
+  }
+  allRoads = [...S.roads, ...yardRoads];
+  streetObj = new THREE.Group(); if (allRoads.length) streetObj.add(roadMesh(allRoads, allRoads));
   if (props) {
-    const free = (p) => ground.waterDepth(p[0], p[1]) <= 0, items = [], wires = [], ctx = { roads: S.roads, blocks: S.blocks, attach: propAttach, free };
-    for (const r of S.roads) { const o = roadProps(r, ctx); items.push(...o.items); wires.push(...o.wires); }
-    const det = blockDetails(free); items.push(...det.items); detailPaths = det.paths;
-    if (det.paths.length) streetObj.add(pathMesh(det.paths));
+    const wires = [], ctx = { roads: allRoads, blocks: S.blocks, attach: propAttach, free };
+    for (const r of allRoads) { const o = roadProps(r, ctx); items.push(...o.items); wires.push(...o.wires); }
+    const ent = entranceDetails(det.es, { roads: allRoads, blocks: S.blocks, free }); items.push(...ent.items); detailPaths = ent.paths;
+    if (ent.paths.length) streetObj.add(pathMesh(ent.paths));
     streetObj.add(props.build(items.map((it) => ({ name: it.name, p: new THREE.Vector3(...it.p), a: new THREE.Vector3(it.a[0], 0, it.a[1]), paint: [Math.floor(it.r * 4), 0, 0], r: it.r }))));
     if (wires.length) { const wp = []; for (const w of wires) for (let i = 0; i + 1 < w.length; i++) wp.push(...w[i], ...w[i + 1]); const wg = new THREE.BufferGeometry(); wg.setAttribute("position", new THREE.Float32BufferAttribute(wp, 3)); streetObj.add(new THREE.LineSegments(wg, wireMat)); }
   }
@@ -186,6 +194,26 @@ function roadPress() {
     action = { kind: "roadEnd", r, k, ends, before: snapshot(), guides: [], why: "" }; return;
   }
   action = { kind: "road", a: roadStart(p), a0: p, b: null, why: "", guides: [] };
+}
+// ---- yards: a click in open ground near blocks lays one out there; in a yard, it shuffles what is in it
+const yardFree = (p) => ground.waterDepth(p[0], p[1]) <= 0;
+let yardPreview = { key: "", Y: null };
+function yardAtCursor(p) {                          // the yard a click at p would make (cached per cell)
+  const key = `${Math.floor(p[0] / CELL)},${Math.floor(p[1] / CELL)}|${streetKey.length}`;
+  if (yardPreview.key !== key) yardPreview = { key, Y: yardCells(p, { blocks: S.blocks, roads: S.roads, free: yardFree }) };
+  return yardPreview.Y;
+}
+function yardPress() {
+  const p = onPlane(0); if (!p) return; const hit = yardRegions.find((r) => r.Y.at(p)), before = snapshot();
+  if (hit) { hit.y.seed = (Math.random() * 2 ** 31) | 0; rebuild(); pushUndo(before); flash("Yard rearranged"); return; }
+  const Y = yardAtCursor(p);
+  if (!Y || Y.count < 25) { flash("No yard here · tap open ground near blocks (not a road, water or an empty field)"); return; }
+  S.yards.push({ id: S.nextId++, p, seed: (Math.random() * 2 ** 31) | 0 }); rebuild(); pushUndo(before);
+}
+function cellsMesh(Y, mat, y = 0.16) {              // a yard's cells as a tinted patch
+  const pos = [], h = CELL / 2;
+  for (let j = 0; j < Y.n; j++) for (let i = 0; i < Y.n; i++) if (Y.mask[j * Y.n + i]) { const [x, z] = Y.centre(i, j); pos.push(x - h, y, z - h, x + h, y, z - h, x + h, y, z + h, x - h, y, z - h, x + h, y, z + h, x - h, y, z + h); }
+  const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3)); return new THREE.Mesh(g, mat);
 }
 const quadMesh = (q, y, mat) => { const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.Float32BufferAttribute(q.flatMap((c) => [c[0], y, c[1]]), 3)); g.setIndex([0, 2, 1, 0, 3, 2, 0, 1, 2, 0, 2, 3]); return new THREE.Mesh(g, mat); };
 function lineQuad(a, b, hw) { const n = V.mul(V.left(V.norm(V.sub(b, a))), hw); return [V.add(a, n), V.add(b, n), V.sub(b, n), V.sub(a, n)]; }
@@ -224,7 +252,7 @@ function save() { try { localStorage.setItem(SAVE_KEY, JSON.stringify({ v: 1, S,
 async function load() {
   let o = null; try { o = JSON.parse(localStorage.getItem(SAVE_KEY) || "null"); } catch (e) { o = null; }
   if (!o || Q.has("fresh")) return false;
-  S = o.S; S.roads ||= []; if (o.cam) { camera.position.fromArray(o.cam.slice(0, 3)); controls.target.fromArray(o.cam.slice(3)); controls.update(); }
+  S = o.S; S.roads ||= []; S.yards ||= []; if (o.cam) { camera.position.fromArray(o.cam.slice(0, 3)); controls.target.fromArray(o.cam.slice(3)); controls.update(); }
   if (o.grid) Object.assign(grid, o.grid);
   const land = o.land || o.splat; if (land) await ground.deserialize(land);
   return true;
@@ -560,7 +588,7 @@ function plantAt(at) {
     if (near.some((t) => (t.x - q[0]) ** 2 + (t.z - q[1]) ** 2 < gap * gap * (0.6 + 0.8 * Math.random()))) continue;
     if (hole) { if (!inHole(q)) continue; }
     else if (onRoof) { if (!insideBlock(onRoof, q, -1.2)) continue; }
-    else if (grounded.some((b) => insideBlock(b, q, 2)) || roadAt(q, S.roads, 1) >= 0 || onPath(q)) continue;
+    else if (grounded.some((b) => insideBlock(b, q, 2)) || roadAt(q, allRoads, 1) >= 0 || onPath(q)) continue;
     const name = set[Math.floor(Math.random() * set.length)], t = { x: q[0], z: q[1], n: TREE_NAMES.indexOf(name), v: Math.floor(Math.random() * 6), rot: Math.random() * 6.283, sc: 0.75 + Math.random() * 0.45, b: onRoof ? onRoof.id : null, ...(hole ? { f: at.floor } : {}) };
     S.trees.push(t); near.push(t); added = true;
   }
@@ -608,13 +636,18 @@ function press() {
     showHover(); return;
   }
   if (t === "road") { roadPress(); return; }
+  if (t === "yard") { yardPress(); return; }
   if ((t === "ground" || t === "trees") && ui.line && !mouse.shift) { const g = onPlane(0); if (g) action = { kind: t === "ground" ? "groundLine" : "treeLine", a: g, b: g }; return; }
   if (t === "ground") { const g = onPlane(0); if (g) { splatBefore = ground.grabAll(); paintBox = null; action = { kind: "ground", last: g }; groundDab(g); } return; }   // paths go under buildings too
   const at = pick(); if (!at) return;
   if (t === "floors" && at.block && wallAt(at)) startPush(at, wallAt(at));
   else if (t === "floors" && at.block) { action = { kind: "floors", b: at.block, before: snapshot(), fl0: at.block.fl, my0: mouse.y, ppf: Math.min(40, Math.max(12, Math.abs(screenOf(at.p[0], at.y, at.p[1])[1] - screenOf(at.p[0], at.y + H, at.p[1])[1]))) }; }
   else if (t === "paint") { action = { kind: "paint", before: snapshot(), changed: false }; paintHover(at); }
-  else if (t === "erase" && !at.block) { const i = roadAt(at.p, S.roads); if (i >= 0) { const before = snapshot(); S.roads.splice(i, 1); rebuild(); pushUndo(before); showHover(); } }
+  else if (t === "erase" && !at.block) {
+    const i = roadAt(at.p, S.roads), yd = yardRegions.find((r) => r.Y.at(at.p)), before = snapshot();
+    if (i >= 0) { S.roads.splice(i, 1); rebuild(); pushUndo(before); showHover(); }
+    else if (yd) { S.yards = S.yards.filter((y) => y !== yd.y); rebuild(); pushUndo(before); showHover(); }
+  }
   else if (t === "erase" && at.block) {
     const before = snapshot(), gone = subtree(at.block.id);
     S.blocks = S.blocks.filter((b) => !gone.has(b.id)); S.trees = S.trees.filter((tr) => !tr.b || !gone.has(tr.b)); hover = null; rebuild(); pushUndo(before); showHover();
@@ -754,6 +787,13 @@ function showHover() {
     else { const p = onPlane(0); if (p) { const tol = tolAt(p, 0); if (S.roads.some((r) => r.pts.some((e) => V.dist(e, p) < tol))) tip("drag to carry on from this end<small>Shift + drag moves the end</small>"); else { showGuides([], 0, roadStart(p)); tip(`<small>drag to lay a ${ui.roadW} m road</small>`); } } }
     return;
   }
+  if (t === "yard") {
+    const p = onPlane(0); if (!p) return; const hit = yardRegions.find((r) => r.Y.at(p)), add = (m) => { overlayRoot.add(m); hoverMesh.push(m); };
+    for (const r of yardRegions) if (r !== hit) add(cellsMesh(r.Y, OV.paint));
+    if (hit) { add(cellsMesh(hit.Y, OV.edge)); tip("rearrange this yard<small>click to shuffle what is in it · Demolish removes it</small>"); }
+    else { const Y = yardAtCursor(p); if (Y && Y.count >= 25) { add(cellsMesh(Y, OV.build)); tip(`${Math.round(Y.area / 100) * 100} m² yard<small>click to lay it out: a driveway, parking, a playground, a kiosk</small>`); } else tip("<small>no yard here</small>"); }
+    return;
+  }
   if (action && (action.kind === "groundLine" || action.kind === "treeLine")) {
     const m = quadMesh(lineQuad(action.a, action.b, action.kind === "groundLine" ? ui.groundR : 1.5), 0.3, OV.paint); overlayRoot.add(m); hoverMesh.push(m);
     tip(`${Math.round(V.dist(action.a, action.b))} m<small>release to ${action.kind === "groundLine" ? "paint" : "plant"} along the line</small>`); return;
@@ -787,6 +827,7 @@ function showHover() {
       else if (at && at.block && !at.roof && (at.block.closed || at.block.pts.length !== 2)) tip("<small>only straight blocks for now</small>");
     }
   }
+  else if (t === "erase" && at && !at.block && roadAt(at.p, S.roads) < 0 && yardRegions.some((r) => r.Y.at(at.p))) { const m = cellsMesh(yardRegions.find((r) => r.Y.at(at.p)).Y, OV.erase); overlayRoot.add(m); hoverMesh.push(m); tip("remove this yard"); }
   else if (t === "erase" && at && !at.block && roadAt(at.p, S.roads) >= 0) { const m = quadMesh(roadQuad(S.roads[roadAt(at.p, S.roads)], S.roads), 0.3, OV.erase); overlayRoot.add(m); hoverMesh.push(m); tip("remove this road"); }
   else if (t === "erase" && at && at.block) { for (const id of subtree(at.block.id)) hl(byId.get(id), OV.erase); }
   else if (t === "paint" && at && at.block) hl(at.block, OV.paint);
@@ -887,7 +928,7 @@ function demolish(b) {                             // knock down b and everythin
 }
 function clearTown() {                             // start over (undoable, the ground too)
   const before = snapshot(), R = ground.RES, img = ground.grabAll(); ground.clear();
-  S = { blocks: [], trees: [], roads: [], nextId: S.nextId }; rebuild();
+  S = { blocks: [], trees: [], roads: [], yards: [], nextId: S.nextId }; rebuild();
   undoStack.push({ before, after: snapshot(), splat: ground.patch(img, [0, 0, R, R]) }); redoStack.length = 0; scheduleSave();
 }
 // ---- for an input that edits by handles (touch): the same operations, started directly
@@ -911,7 +952,7 @@ async function start() {
   rebuild();
   addEventListener("beforeunload", save);
   let last = performance.now();
-  window.__sandbox = { S: () => S, D: () => draft, A: () => action && action.kind, pickAt: (x, y) => { mouse.x = x; mouse.y = y; const a = pick(); return a && { p: a.p, y: a.y, block: a.block && a.block.id, roof: a.roof }; }, rebuild, kit, camera, controls, topOf, scene, streetRoot, ground, entrances: () => cityLays.flatMap(({ lay }) => lay.out.filter((p) => p.pc === "entrance").map((p) => ({ q: p.q, n: p.n }))) };
+  window.__sandbox = { S: () => S, D: () => draft, A: () => action && action.kind, pickAt: (x, y) => { mouse.x = x; mouse.y = y; const a = pick(); return a && { p: a.p, y: a.y, block: a.block && a.block.id, roof: a.roof }; }, rebuild, kit, camera, controls, topOf, scene, streetRoot, ground, allRoads: () => allRoads, yardRegions: () => yardRegions.map((r) => ({ id: r.y.id, area: r.Y.area })), entrances: () => cityLays.flatMap(({ lay }) => lay.out.filter((p) => p.pc === "entrance").map((p) => ({ q: p.q, n: p.n }))) };
   renderer.setAnimationLoop((t) => {
     const dt = Math.min(0.05, (t - last) / 1000); last = t;
     emit("frame", dt); controls.update();

@@ -31,6 +31,7 @@ each; run them before a release, not after every change). They need Python with 
 - `sandbox_desktop.js` — mouse and keyboard
 - `sandbox_touch.js` — fingers: map-style camera, tap to place, handles
 - `sandbox_streets.js` — roads: surfaces, kerbs, junctions, and the lamps, poles, wires and parked cars along them
+- `sandbox_yards.js` — yards: the paint-bucket fill from a tapped point, and the driveway, link road, playground and kiosk in it
 - `sandbox_details.js` — entrance paths, benches, bins and lamps; dishes on facades; antennas on roofs
 - `props.js` — the simulator's props loader (benches, lamps, cars...); the models themselves are not in git yet
 - `sandbox_handles.js` — the touch arithmetic (two-finger gestures, where handles go), tested in Node

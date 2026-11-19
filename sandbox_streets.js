@@ -80,7 +80,7 @@ export function roadProps(r, ctx) {
     items.push({ name: lampName, p: [p[0], 0, p[1]], a: facing(out1), paint: [0, 0, 0], r: R() }); taken.push(p);
   }
   // electricity poles and their wires
-  if (L >= 50) {
+  if (L >= 50 && !r.yard) {                         // (no power line along a yard's driveway)
     const pole = ["pole_0", "pole_1", "pole_2"][Math.floor(R() * 3)], a = u, poles = [];     // along the road: the cross-arms (y) across it
     for (let s = 10 + R() * 8; s < L - 6; s += 34) {
       const p = at(s, -side * (r.w / 2 + KERB.w + 1.4)); if (!clear(p, 0.8)) { poles.push(null); continue; }

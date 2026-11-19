@@ -121,7 +121,7 @@ function tap(x, y) {
   if (t === "line") tapBuild(pick());
   else if (t === "carve") tapCarve(pick());
   else if (t === "road") { const p = onPlane(0); if (!p) return; if (!rc) rc = { a: roadStart(p) }; else { const e = roadEnd(rc.a, p), r = addRoad(rc.a, e.p); if (r) rc.a = e.p; } status(); }
-  else if (t === "paint" || t === "erase") { mouse.in = true; press(); release(); mouse.in = false; showHover(); }
+  else if (t === "paint" || t === "erase" || t === "yard") { mouse.in = true; press(); release(); mouse.in = false; showHover(); }
 }
 let told = false;
 const seed = () => (Math.random() * 2 ** 31) | 0;

@@ -9,6 +9,7 @@ export const TOOLS = [  { id: "line", key: "1", name: "Block", hint: "Drag a wal
   { id: "paint", key: "5", name: "Paint", hint: "Click or sweep over blocks to repaint them" },
   { id: "trees", key: "6", name: "Trees", hint: "Paint trees on the ground or roofs · Shift to remove" },
   { id: "road", key: "r", name: "Road", hint: "Drag to lay a road · roads join where they meet · Shift + drag a road's end to move it · Demolish removes one" },
+  { id: "yard", key: "y", name: "Yard", hint: "Click open ground between blocks to make it a yard: a driveway, parking, a playground, a kiosk · click a yard to rearrange it · Demolish removes it" },
   { id: "ground", key: "7", name: "Land", hint: "Paint water, bog, reeds, fields and paths · Grass rubs them out" },
   { id: "erase", key: "8", name: "Demolish", hint: "Click a block to knock it down (and everything standing on it), or a road" },
 ];
@@ -18,6 +19,7 @@ const TOUCH_HINT = {
   carve: "Tap a panel · drag the arrows round it to stretch the choice · Next · then drag the arrow", paint: "Tap blocks to repaint them",
   trees: "Paint trees with one finger · two fingers move the view", ground: "Paint with one finger · two fingers move the view",
   erase: "Tap a block or a road to knock it down",
+  yard: "Tap open ground between blocks to make a yard · tap a yard to rearrange it",
   road: "Tap where a road starts, then tap for each bend · Done",
 };
 const isBuild = (t) => t === "line" || t === "curve" || t === "ring";
@@ -31,6 +33,7 @@ const ICONS = {
   paint: '<path d="M4 4h13v5H4z"/><path d="M17 6h3v6h-8v3"  fill="none" stroke="currentColor" stroke-width="2"/><path d="M10.5 15h3v6h-3z"/>',
   trees: '<path d="M12 2l6 9h-4l5 7H5l5-7H6z"/><path d="M11 18h2v4h-2z"/>',
   road: '<path d="M7 2h3l-1 20H3zM14 2h3l4 20h-6z"/><path d="M11.2 3h1.6v4h-1.6zM11.2 10h1.6v4h-1.6zM11.2 17h1.6v4h-1.6z"/>',
+  yard: '<path d="M3 3h18v18H3z" opacity=".35"/><path d="M6 17l3-7 3 7zM14 8h4v4h-4z"/><circle cx="16" cy="16" r="2"/>',
   ground: '<path d="M3 20l5-16h8l5 16z" opacity=".5"/><path d="M11 6h2v3h-2zM11 11h2v3h-2zM11 16h2v3h-2z"/>',
   erase: '<path d="M5 7h14l-1.2 14H6.2z"/><path d="M9 3h6v2H9z"/><path d="M3 5h18v2H3z"/>',
 };

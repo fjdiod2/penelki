@@ -61,7 +61,7 @@ export function roadAt(p, roads, margin = 0.5) {
 // -> { items: [{ name, p: [x, y, z], a: [x, z] (along the prop), paint, r }], wires: [[[x, y, z], ...], ...] }
 // Lamps every 26 m on one side, their arms over the road; on roads 50 m and longer, electricity poles every 34 m on the
 // other side with wires between them; cars parked along the edges where there are blocks within 30 m.
-const CARS = ["car_0", "car_1", "car_2", "car_3"], PHOTO = ["car_photo_0", "car_photo_1", "car_photo_2", "car_photo_3"];
+const CARS = ["car_photo_0", "car_photo_1", "car_photo_2", "car_photo_3"];
 const nearBlock = (p, blocks, d) => blocks.some((b) => !b.parent && !b.at && minDistPath(b, p) < (b.D || 12) / 2 + d);
 function minDistPath(b, p) { let m = Infinity; const n = b.pts.length; for (let i = 0; i < (b.closed ? n : n - 1); i++) m = Math.min(m, segDist(p, b.pts[i], b.pts[(i + 1) % n]).d); return m; }
 export function roadProps(r, ctx) {
@@ -103,7 +103,7 @@ export function roadProps(r, ctx) {
       const off = sd * (r.w / 2 - (r.w >= 7 ? 1.1 : 0.9)), p = at(s, off);
       if (!nearBlock(p, blocks, 30) || taken.some((t) => V.dist(t, p) < 3.5)) continue;
       if (!clear(p, -1)) continue;                  // (cars stand on this road, but not on a junction with another)
-      const photo = R() < 0.3, name = photo ? PHOTO[Math.floor(R() * 4)] : CARS[Math.floor(R() * 4)], dir = R() < 0.5 ? u : V.mul(u, -1);
+      const name = CARS[Math.floor(R() * CARS.length)], dir = R() < 0.5 ? u : V.mul(u, -1);
       items.push({ name, p: [p[0], 0.03, p[1]], a: dir, paint: [0, 0, 0], r: R() }); taken.push(p);
     }
   }

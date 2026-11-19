@@ -259,7 +259,7 @@ export function createGround(scene, fog, sky) {
           col = mix(vec3(l), t, 0.3) * 0.62 * (0.9 + 0.2 * vn(p / 11.0 + 3.0));
           col *= mix(1.0, 0.8, smoothstep(0.6, 0.64, vn(p / 7.0 + 11.0)));             // patched
           float c1 = w >= 6.0 ? 1.0 : 0.75, c2 = w >= 6.0 ? 2.5 : 0.75;
-          float tr = exp(-pow((x - c1) / 0.35, 2.0)) + exp(-pow((x - c2) / 0.35, 2.0));
+          float d1 = (x - c1) / 0.35, d2 = (x - c2) / 0.35, tr = exp(-d1 * d1) + exp(-d2 * d2);   // (not pow(): of a negative number it is NaN on some GPUs)
           col *= 1.0 + 0.13 * min(tr, 1.0) * (0.6 + 0.4 * vn(p * 0.4));                 // polished where the wheels go
           col *= mix(1.0, 0.78, smoothstep(w * 0.5 - 0.7, w * 0.5, x));                 // grime along the kerb
         } else {

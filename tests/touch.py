@@ -47,6 +47,9 @@ def run():
         c0 = camst(); drag1((200, 500), (120, 420)); c1 = camst(); log("one finger slides the view", moved=c1["tgt"] != c0["tgt"], same_angle=c1["tilt"] == c0["tilt"] and c1["turn"] == c0["turn"], blocks=len(blocks()))
         two(lambda i: [(140 - 5 * i, 450), (250 + 5 * i, 450)]); c2 = camst(); log("pinch out zooms in", closer=c2["dist"] < c1["dist"])
         two(lambda i: [(195 - 60 * math.cos(math.radians(3 * i)), 450 - 60 * math.sin(math.radians(3 * i))), (195 + 60 * math.cos(math.radians(3 * i)), 450 + 60 * math.sin(math.radians(3 * i)))]); c3 = camst(); log("twist turns", turned=c3["turn"] != c2["turn"])
+        two(lambda i: [(120 + 8 * i, 450 + (i % 3)), (260 + 8 * i + (i % 2) * 3, 452 - (i % 3))]); c4 = camst(); log("a wobbly two-finger slide only slides", moved=c4["tgt"] != c3["tgt"], same_turn=c4["turn"] == c3["turn"], same_dist=c4["dist"] == c3["dist"])
+        under = lambda x, y: pg.evaluate("([x,y]) => { const s = window.__sandbox, c = s.camera; c.updateMatrixWorld(); const r = new c.position.constructor(x / innerWidth * 2 - 1, -(y / innerHeight) * 2 + 1, 0.5).unproject(c).sub(c.position).normalize(); const t = (s.controls.target.y - c.position.y) / r.y; return [Math.round(c.position.x + r.x * t), Math.round(c.position.z + r.z * t)]; }", [x, y])
+        g0 = under(110, 380); two(lambda i: [(80 - 4 * i, 380 - 3 * i), (140 + 4 * i, 380 + 3 * i)]); g1 = under(110, 380); log("a pinch zooms into the spot between the fingers", stays=abs(g0[0] - g1[0]) <= 2 and abs(g0[1] - g1[1]) <= 2, closer=camst()["dist"] < c4["dist"])
         two(lambda i: [(140, 500 - 8 * i), (250, 500 - 8 * i)]); c4 = camst(); log("two fingers up tilt toward the horizon", tilt=[c3["tilt"], c4["tilt"]], tilted=c4["tilt"] > c3["tilt"], dist_same=abs(c4["dist"] - c3["dist"]) <= 1)
         # ---- tap to place: the placing stage (move, walls, floors), Done, one undo step
         cam([0, 90, 90], [0, 0, 0])

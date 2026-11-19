@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { blockKit } from "./env.js";
 import { V, pathLen } from "../sandbox_blocks.js";
 import { createTown } from "../sandbox_town.js";
-import { classifyTwo, blockHandles, outline, selHandles, arrange, hitHandle, roadHandles } from "../sandbox_handles.js";
+import { classifyTwo, twoStep, blockHandles, outline, selHandles, arrange, hitHandle, roadHandles } from "../sandbox_handles.js";
 import { arc, ring } from "../sandbox_town.js";
 
 const kit = await blockKit();
@@ -149,4 +149,14 @@ test("a road's handles are its ends; a loop has none", () => {
   const r = { id: 1, pts: [[0, 0], [10, 0], [20, 5]], w: 7 };
   assert.deepEqual(roadHandles(r).map((h) => [h.k, h.at[0], h.at[2]]), [[0, 0, 0], [1, 20, 5]]);
   assert.deepEqual(roadHandles({ ...r, closed: true }), []);
+});
+
+test("two fingers: a plain slide neither turns nor zooms; a clear twist or pinch does, from then on, without a jump", () => {
+  const a0 = [[100, 400], [250, 400]], st = {};
+  let r = twoStep(st, a0, a0, [[130, 395], [282, 404]]);                        // a slide, a little wobble in spacing and angle
+  assert.equal(r.rot, 0); assert.equal(r.zoom, 1);
+  const twisted = [[110, 430], [240, 370]]; r = twoStep(st, a0, [[130, 395], [282, 404]], twisted);   // now well past 11 degrees
+  assert.ok(st.rot && r.rot !== 0); assert.ok(Math.abs(r.rot) < 0.6, "only this move's turn, not all of it at once");
+  const st2 = {}; r = twoStep(st2, a0, a0, [[80, 400], [270, 400]]);            // pinched out by a quarter
+  assert.ok(st2.zoom && r.zoom < 1 && !st2.rot);
 });

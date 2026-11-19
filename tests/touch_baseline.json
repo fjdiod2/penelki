@@ -19,13 +19,24 @@
   "turned": true
  },
  {
+  "step": "a wobbly two-finger slide only slides",
+  "moved": true,
+  "same_turn": true,
+  "same_dist": true
+ },
+ {
+  "step": "a pinch zooms into the spot between the fingers",
+  "stays": true,
+  "closer": true
+ },
+ {
   "step": "two fingers up tilt toward the horizon",
   "tilt": [
    45,
    78
   ],
   "tilted": true,
-  "dist_same": true
+  "dist_same": false
  },
  {
   "step": "tap places a block, being placed",

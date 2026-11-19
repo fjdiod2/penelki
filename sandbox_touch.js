@@ -15,7 +15,7 @@ import { THREE, renderer, camera, controls, ui, grid, kit, cursor as mouse, now,
   undoMark, squashUndo, dropUndo, showGuides, addRoad, roadStart, roadEnd, holdStreets } from "./sandbox_core.js";
 import { renderSub } from "./sandbox_ui.js";
 import { sameWall, arc, ring } from "./sandbox_town.js";
-import { classifyTwo, blockHandles, outline, selHandles, arrange, hitHandle, roadHandles } from "./sandbox_handles.js";
+import { classifyTwo, twoStep, blockHandles, outline, selHandles, arrange, hitHandle, roadHandles } from "./sandbox_handles.js";
 import { roadAt } from "./sandbox_streets.js";
 import { V } from "./sandbox_blocks.js";
 
@@ -75,7 +75,7 @@ function touchDown(e) {
     return;
   }
   if (g) { endOne(true); g = null; }               // a second finger: the camera, and whatever the first one began is undone
-  const pts = [...fingers.values()].slice(0, 2).map((q) => [...q]); two = { a: pts, prev: pts, mode: null };
+  const pts = [...fingers.values()].slice(0, 2).map((q) => [...q]); two = { a: pts, prev: pts, mode: null, st: {} };
 }
 function touchMove(e) {
   if (!fingers.has(e.pointerId)) return; fingers.set(e.pointerId, [e.clientX, e.clientY]);
@@ -386,14 +386,17 @@ function twoMove(cur) {
   } else cameraTwo(two.prev, cur);
   two.prev = cur;
 }
-function cameraTwo(a, b) {                         // slide, pinch and twist at once
-  const mid = (q) => [(q[0][0] + q[1][0]) / 2, (q[0][1] + q[1][1]) / 2], len = (q) => Math.hypot(q[0][0] - q[1][0], q[0][1] - q[1][1]), ang = (q) => Math.atan2(q[1][1] - q[0][1], q[1][0] - q[0][0]);
-  const off = camera.position.clone().sub(controls.target);
-  off.setLength(Math.min(controls.maxDistance, Math.max(controls.minDistance, off.length() * (len(a) / Math.max(1, len(b))))));
-  let da = ang(b) - ang(a); da = Math.atan2(Math.sin(da), Math.cos(da)); off.applyAxisAngle(UPV, da);
-  camera.position.copy(controls.target).add(off);
-  const p0 = screenToTarget(...mid(a)), p1 = screenToTarget(...mid(b));
-  if (p0 && p1) { const d = p0.sub(p1); d.y = 0; camera.position.add(d); controls.target.add(d); }
+// slide, and once clearly started (twoStep) pinch and twist, all about the ground between the fingers: it stays under them
+function cameraTwo(a, b) {
+  const mid = (q) => [(q[0][0] + q[1][0]) / 2, (q[0][1] + q[1][1]) / 2];
+  const { rot, zoom } = twoStep(two.st, two.a, a, b);
+  const P = screenToTarget(...mid(a)); if (!P) return;
+  const dist = camera.position.distanceTo(controls.target);
+  const k = Math.min(controls.maxDistance, Math.max(controls.minDistance, dist * zoom)) / dist;
+  for (const v of [camera.position, controls.target]) { v.sub(P).multiplyScalar(k).applyAxisAngle(UPV, rot).add(P); }   // zoom and turn about P
+  controls.update();
+  const p1 = screenToTarget(...mid(b));            // then slide, so P is under the fingers' middle again
+  if (p1) { const d = P.clone().sub(p1); d.y = 0; const lim = camera.position.distanceTo(controls.target) * 0.25; if (d.length() > lim) d.setLength(lim); camera.position.add(d); controls.target.add(d); }
   controls.update();
 }
 

@@ -17,6 +17,19 @@ export function classifyTwo(a, b) {
   return "move";
 }
 
+// ---- the turn and the zoom of a two-finger move only start once the fingers clearly twist (11 degrees) or pinch (7%)
+// since the gesture began, and then stay on for it: so a plain two-finger slide does not also turn and zoom a little.
+// st: the gesture's state (rot, zoom: on yet?); a0: where the fingers started; a, b: where they were and are now.
+// -> { rot: the angle to turn by now (radians), zoom: the factor to scale the distance by now }
+export const TWIST_ON = 0.2, PINCH_ON = 0.07;
+export function twoStep(st, a0, a, b) {
+  const ang = (q) => Math.atan2(q[1][1] - q[0][1], q[1][0] - q[0][0]), len = (q) => Math.max(1, V.dist(q[0], q[1]));
+  const wrap = (x) => Math.atan2(Math.sin(x), Math.cos(x));
+  if (!st.rot && Math.abs(wrap(ang(b) - ang(a0))) > TWIST_ON) st.rot = true;
+  if (!st.zoom && Math.abs(Math.log(len(b) / len(a0))) > PINCH_ON) st.zoom = true;
+  return { rot: st.rot ? wrap(ang(b) - ang(a)) : 0, zoom: st.zoom ? len(a) / len(b) : 1 };
+}
+
 // ---- handles. Each has an anchor in the world (at), a kind, and how it is put on screen (place):
 //   "out"    outside the block's outline on screen, on the side its arrow points to (walls)
 //   "near"   by its anchor, pushed off it a little (the edges of a choice of panels)

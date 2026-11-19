@@ -30,7 +30,7 @@ def run():
             touch("touchStart", f(0))
             for i in range(1, 11): touch("touchMove", f(i)); time.sleep(0.016)
             touch("touchEnd", []); time.sleep(0.2)
-        def cam(pos, tgt): pg.evaluate("([p,t]) => { const s = window.__sandbox; s.camera.position.set(...p); s.controls.target.set(...t); s.controls.update(); }", [pos, tgt]); time.sleep(0.3)
+        def cam(pos, tgt): pg.evaluate("([p,t]) => { const s = window.__sandbox, c = s.controls; c.enableDamping = false; c.update(); s.camera.position.set(...p); c.target.set(...t); c.update(); c.enableDamping = true; }", [pos, tgt])   # no leftover orbit momentum; time.sleep(0.3)
         scr = lambda x, y, z: pg.evaluate("([x,y,z]) => { const c = window.__sandbox.camera; c.updateMatrixWorld(); const v = c.position.clone().set(x,y,z).project(c); return [(v.x+1)/2*innerWidth, (1-v.y)/2*innerHeight]; }", [x, y, z])
         st = lambda: pg.evaluate("(() => { const s = window.__sandbox, d = s.D(); return { blocks: s.S().blocks.map(b => [b.fl, +b.D.toFixed(1), b.pts.length]), draft: d && [d.stage, d.fl], cam: s.camera.position.toArray().map(v => Math.round(v)), tgt: s.controls.target.toArray().map(v => Math.round(v)) }; })()")
         tip = lambda: pg.inner_text("#tip").replace("\n", " | ") if pg.is_visible("#tip") else ""

@@ -1,0 +1,12 @@
+{
+  "name": "panelki",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/*.test.js",
+    "test:browser": "python3 tests/desktop.py check && python3 tests/touch.py check"
+  },
+  "devDependencies": {
+    "three": "0.160.0"
+  }
+}

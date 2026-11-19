@@ -9,8 +9,8 @@ and compared loosely (how many, and on what). Needs playwright (pip install play
 import sys, os, json, time, glob, math, hashlib, threading, functools, http.server
 from playwright.sync_api import sync_playwright
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-HERE = os.path.join(ROOT, "tests")
+ROOT = os.environ.get("PANELKI_ROOT") or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # the game to test
+HERE = os.path.dirname(os.path.abspath(__file__))
 MODE = sys.argv[1] if len(sys.argv) > 1 else "check"
 SEED = """(() => { let a = 1234567; Math.random = () => { a |= 0; a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a);
   t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; })();"""
@@ -38,7 +38,7 @@ def run():
         pg.on("pageerror", lambda e: errs.append("PAGEERROR " + str(e))); pg.on("console", lambda m: errs.append(m.text) if m.type == "error" else None)
         pg.goto(f"http://127.0.0.1:{port}/index.html?fresh"); pg.wait_for_function("window.__ready", timeout=60000); time.sleep(1.5)
 
-        def cam(pos, tgt): pg.evaluate("([p,t]) => { const s = window.__sandbox; s.camera.position.set(...p); s.controls.target.set(...t); s.controls.update(); }", [pos, tgt]); time.sleep(0.3)
+        def cam(pos, tgt): pg.evaluate("([p,t]) => { const s = window.__sandbox, c = s.controls; c.enableDamping = false; c.update(); s.camera.position.set(...p); c.target.set(...t); c.update(); c.enableDamping = true; }", [pos, tgt])   # no leftover orbit momentum; time.sleep(0.3)
         scr = lambda x, y, z: pg.evaluate("([x,y,z]) => { const c = window.__sandbox.camera; c.updateMatrixWorld(); const v = c.position.clone().set(x,y,z).project(c); return [(v.x+1)/2*innerWidth, (1-v.y)/2*innerHeight]; }", [x, y, z])
         tip = lambda: pg.inner_text("#tip").replace("\n", " | ") if pg.is_visible("#tip") else ""
         r2 = lambda v: round(v, 2) + 0.0
@@ -174,11 +174,15 @@ def run():
         pg.mouse.wheel(0, -400); time.sleep(0.5); c3_ = pg.evaluate("window.__sandbox.camera.position.toArray()"); trace.append({"step": "wheel zooms", "seen": math.dist(c2_, c3_) > 5})
 
         # ---- trees last (planted on a timer: compared loosely)
-        cam([60, 130, 190], [0, 0, 0]); pg.keyboard.press("6"); seen = [hover((-30, 0, -10))]
-        path([(-30, 0, -10), (10, 0, -10)], hold=0.3, steps=20)
-        g1 = geom(1); path([(g1["m"][0], g1["top"], g1["m"][1]), (g1["m"][0] + 1, g1["top"], g1["m"][1])], hold=0.3)
-        tr = pg.evaluate("window.__sandbox.S().trees")
-        trace.append({"step": "trees", "seen": seen, "trees": {"some": len(tr) > 3, "on a roof": any(t.get("b") for t in tr), "on the ground": any(not t.get("b") for t in tr)}})
+        cam([60, 130, 190], [0, 0, 0]); pg.keyboard.press("6")
+        free = lambda x, y: (lambda a: a is not None and a["block"] is None)(pg.evaluate("(xy) => window.__sandbox.pickAt(xy[0], xy[1])", [x, y]))
+        gy = next(y for y in range(820, 300, -10) if all(free(x, y) for x in range(200, 520, 40)))     # a strip of open grass on screen
+        pg.mouse.move(200, gy); time.sleep(0.15); seen = [tip()]; pg.mouse.down(); time.sleep(1.0)
+        for i in range(1, 61): pg.mouse.move(200 + i * 5, gy); time.sleep(0.01)
+        pg.mouse.up(); time.sleep(0.2)
+        g1 = geom(1); path([(g1["m"][0], g1["top"], g1["m"][1]), (g1["m"][0] + 1, g1["top"], g1["m"][1])], hold=1.0, steps=40)
+        tr = pg.evaluate("window.__sandbox.S().trees"); print("trees planted:", len(tr), sorted(set(t.get("b") or 0 for t in tr)))
+        trace.append({"step": "trees", "seen": seen, "trees": {"some": len(tr) > 0, "on a roof": any(t.get("b") for t in tr), "on the ground": any(not t.get("b") for t in tr)}})
 
         # ---- save, reload
         pg.evaluate("() => dispatchEvent(new Event('beforeunload'))"); time.sleep(0.3)

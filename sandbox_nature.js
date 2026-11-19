@@ -165,7 +165,8 @@ export function createGround(scene, fog, sky) {
         #include <colorspace_fragment>
       }`,
   });
-  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(9000, 9000), mat); mesh.rotation.x = -Math.PI / 2; scene.add(mesh);
+  // (in many pieces: depth across one 9 km triangle is too coarse on real GPUs, and the ground then covered roads)
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(9000, 9000, 160, 160), mat); mesh.rotation.x = -Math.PI / 2; scene.add(mesh);
 
   // the water surface: one mirror under the whole paintable square, seen only through the holes in the ground
   const waterTex = TL.load("./assets/water.jpg"); waterTex.wrapS = waterTex.wrapT = THREE.RepeatWrapping; waterTex.colorSpace = THREE.SRGBColorSpace;
@@ -243,13 +244,17 @@ export function createGround(scene, fog, sky) {
   }
   const update = (t) => { U.time.value = t; };
   // the surface of roads (and their kerbs): dark worn asphalt, with patches, lighter wheel tracks and grime at the edges;
-  // kerbs of 1 m concrete stones. attribute rk: on a road x -1..1 across it and y = -its width; on a kerb x metres along
-  // it and y 1 (top) or 0.6 (side)
+  // kerbs of 1 m concrete stones; worn white markings on streets. attribute rk: on a road x -1..1 across it and y = -its
+  // width; on a kerb x metres along it and y 1 (top) or 0.6 (side). ra: on a road, metres along it from its start point,
+  // and its length (markings stop short of the ends, where it joins other roads)
   const roadMat = new THREE.ShaderMaterial({
     uniforms: { tAsph: mat.uniforms.tAsph, fogC: { value: fog.color }, fogR: { value: new THREE.Vector2(fog.near, fog.far) } },
     polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1,
-    vertexShader: "attribute vec2 rk; varying vec3 vW; varying vec2 vRk; void main() { vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xyz; vRk = rk; gl_Position = projectionMatrix * viewMatrix * w; }",
-    fragmentShader: `uniform sampler2D tAsph; uniform vec3 fogC; uniform vec2 fogR; varying vec3 vW; varying vec2 vRk;
+    vertexShader: "attribute vec2 rk; attribute vec2 ra; varying vec3 vW; varying vec2 vRk; varying vec2 vRa; void main() { vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xyz; vRk = rk; vRa = ra; gl_Position = projectionMatrix * viewMatrix * w; }",
+    fragmentShader: `uniform sampler2D tAsph; uniform vec3 fogC; uniform vec2 fogR; varying vec3 vW; varying vec2 vRk; varying vec2 vRa;
+      // a line of half width hw at distance d (antialiased); dashes: on for the first "on" metres of every "period"
+      float stripe(float d, float hw) { float aa = fwidth(d) + 0.005; return 1.0 - smoothstep(hw - aa, hw + aa, abs(d)); }
+      float dash(float s, float on, float period) { float f = mod(s, period), aa = fwidth(s) + 0.01; return smoothstep(-aa, aa, f) * (1.0 - smoothstep(on - aa, on + aa, f)); }
       ${GLSL_TILE}
       void main() {
         vec2 p = vW.xz, dx = dFdx(p), dy = dFdy(p); vec3 col;
@@ -262,6 +267,14 @@ export function createGround(scene, fog, sky) {
           float d1 = (x - c1) / 0.35, d2 = (x - c2) / 0.35, tr = exp(-d1 * d1) + exp(-d2 * d2);   // (not pow(): of a negative number it is NaN on some GPUs)
           col *= 1.0 + 0.13 * min(tr, 1.0) * (0.6 + 0.4 * vn(p * 0.4));                 // polished where the wheels go
           col *= mix(1.0, 0.78, smoothstep(w * 0.5 - 0.7, w * 0.5, x));                 // grime along the kerb
+          if (w >= 6.0) {                                                                // markings: a street has a dashed centre line,
+            float xs = vRk.x * w * 0.5, s = vRa.x, m;                                     // a wide one a double solid one and dashed lanes
+            if (w < 9.0) m = stripe(xs, 0.06) * dash(s, 3.0, 9.0);
+            else m = max(stripe(abs(xs) - 0.14, 0.05), stripe(abs(xs) - w * 0.25, 0.06) * dash(s, 3.0, 9.0));
+            m *= smoothstep(1.0, 2.0, s) * smoothstep(1.0, 2.0, vRa.y - s);              // not into the junctions at its ends
+            float wear = smoothstep(0.2, 0.75, vn(p * 1.1 + 4.0)) * (0.55 + 0.45 * vn(p * 9.0 + 1.7));
+            col = mix(col, vec3(0.6, 0.6, 0.57), m * (0.3 + 0.7 * wear));                // faded, chipped paint
+          }
         } else {
           float st = floor(vRk.x), f = fract(vRk.x);
           col = vec3(0.37, 0.36, 0.34) * (0.84 + 0.22 * vn(p * 2.3 + st * 7.1)) * (0.93 + 0.07 * vn(p * 23.0 + vW.y * 17.0)) * (0.86 + 0.24 * h2(vec2(st, 3.7)));

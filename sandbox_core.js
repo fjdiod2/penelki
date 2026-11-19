@@ -7,7 +7,7 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { createBlockKit, V, offsetPoly, polyArea, pathLen, nearestOnPath, subPath, cutRects } from "./sandbox_blocks.js";
 import { createTown, MIN_D, sameWall } from "./sandbox_town.js";
-import { roadQuad, kerbs, snapToRoads, roadAt, roadProps, KERB } from "./sandbox_streets.js";
+import { roadQuad, endExt, kerbs, snapToRoads, roadAt, roadProps, KERB } from "./sandbox_streets.js";
 import { createProps } from "./props.js";
 import { createTrees, createGround, TREE_NAMES, TREE_SETS, LAND, WATER_Y } from "./sandbox_nature.js";
 
@@ -103,16 +103,17 @@ const streetRoot = new THREE.Group(); scene.add(streetRoot);
 const wireMat = new THREE.LineBasicMaterial({ color: 0x262626 });
 const ROAD_Y = 0.05;
 function roadMesh(list, all, mat = ground.roadMat) {   // the surfaces and kerbs of the roads in list, among all, as one mesh
-  const pos = [], rk = [], idx = [], quad = (ps, ys, ks, y) => { const o = pos.length / 3; ps.forEach((p, n) => { pos.push(p[0], ys[n], p[1]); rk.push(ks[n], y); }); idx.push(o, o + 2, o + 1, o, o + 3, o + 2, o, o + 1, o + 2, o, o + 2, o + 3); };
+  const pos = [], rk = [], ra = [], idx = [], quad = (ps, ys, ks, y, al = [0, 0, 0, 0], L = 0) => { const o = pos.length / 3; ps.forEach((p, n) => { pos.push(p[0], ys[n], p[1]); rk.push(ks[n], y); ra.push(al[n], L); }); idx.push(o, o + 2, o + 1, o, o + 3, o + 2, o, o + 1, o + 2, o, o + 2, o + 3); };
   for (const r of list) {
-    const q = roadQuad(r, all); quad(q, [ROAD_Y, ROAD_Y, ROAD_Y, ROAD_Y], [1, 1, -1, -1], -r.w);   // (rk: across, -width)
+    const q = roadQuad(r, all), [ea, eb] = endExt(r, all), L = V.dist(r.pts[0], r.pts[1]);
+    quad(q, [ROAD_Y, ROAD_Y, ROAD_Y, ROAD_Y], [1, 1, -1, -1], -r.w, [-ea, L + eb, L + eb, -ea], L);   // (rk: across, -width; ra: along, length)   // (rk: across, -width)
     for (const [a, b] of kerbs(r, all)) {             // a kerb: its top and both sides; rk.x counts metres along it (1 m stones)
       const d = V.norm(V.sub(b, a)), n = V.mul(V.left(d), KERB.w / 2), A = V.add(a, n), B = V.add(b, n), C = V.sub(b, n), Dd = V.sub(a, n), h = KERB.h, s0 = V.dot(a, d), s1 = V.dot(b, d);
       quad([A, B, C, Dd], [h, h, h, h], [s0, s1, s1, s0], 1);
       quad([A, B, B, A], [0, 0, h, h], [s0, s1, s1, s0], 0.6); quad([Dd, C, C, Dd], [h, h, 0, 0], [s0, s1, s1, s0], 0.6);
     }
   }
-  const geo = new THREE.BufferGeometry(); geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3)); geo.setAttribute("rk", new THREE.Float32BufferAttribute(rk, 2)); geo.setIndex(idx);
+  const geo = new THREE.BufferGeometry(); geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3)); geo.setAttribute("rk", new THREE.Float32BufferAttribute(rk, 2)); geo.setAttribute("ra", new THREE.Float32BufferAttribute(ra, 2)); geo.setIndex(idx);
   const g = new THREE.Group(); g.add(new THREE.Mesh(geo, mat)); return g;
 }
 let streetKey = "", streetObj = null;
@@ -875,7 +876,7 @@ async function start() {
   rebuild();
   addEventListener("beforeunload", save);
   let last = performance.now();
-  window.__sandbox = { S: () => S, D: () => draft, A: () => action && action.kind, pickAt: (x, y) => { mouse.x = x; mouse.y = y; const a = pick(); return a && { p: a.p, y: a.y, block: a.block && a.block.id, roof: a.roof }; }, rebuild, kit, camera, controls, topOf };
+  window.__sandbox = { S: () => S, D: () => draft, A: () => action && action.kind, pickAt: (x, y) => { mouse.x = x; mouse.y = y; const a = pick(); return a && { p: a.p, y: a.y, block: a.block && a.block.id, roof: a.roof }; }, rebuild, kit, camera, controls, topOf, scene, streetRoot, ground };
   renderer.setAnimationLoop((t) => {
     const dt = Math.min(0.05, (t - last) / 1000); last = t;
     emit("frame", dt); controls.update();

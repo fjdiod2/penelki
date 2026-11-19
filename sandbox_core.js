@@ -272,12 +272,13 @@ function redo() { sel = null; const e = redoStack.pop(); if (!e) return; if (e.s
 function putSplat(p, which) { ground.put(p, which); trees.rebuild(S.trees, treeY); }
 let saveT = 0;
 function scheduleSave() { clearTimeout(saveT); saveT = setTimeout(save, 700); }
-function save() { try { localStorage.setItem(SAVE_KEY, JSON.stringify({ v: 1, S, land: ground.serialize(), cam: [...camera.position.toArray(), ...controls.target.toArray()], grid })); } catch (e) { console.warn("save failed", e); } }
+function save() { try { localStorage.setItem(SAVE_KEY, JSON.stringify({ v: 1, S, land: ground.serialize(), cam: [...camera.position.toArray(), ...controls.target.toArray()], grid, atmos })); } catch (e) { console.warn("save failed", e); } }
 async function load() {
   let o = null; try { o = JSON.parse(localStorage.getItem(SAVE_KEY) || "null"); } catch (e) { o = null; }
   if (!o || Q.has("fresh")) return false;
   S = o.S; S.roads ||= []; S.yards ||= []; if (o.cam) { camera.position.fromArray(o.cam.slice(0, 3)); controls.target.fromArray(o.cam.slice(3)); controls.update(); }
   if (o.grid) Object.assign(grid, o.grid);
+  if (o.atmos) atmos.haze = o.atmos.haze;
   const land = o.land || o.splat; if (land) await ground.deserialize(land);
   return true;
 }
@@ -942,9 +943,28 @@ function tip(html) {
 let flashT = 0; function flash(s) { const el = $("#flash"); el.textContent = s; el.classList.add("show"); clearTimeout(flashT); flashT = setTimeout(() => el.classList.remove("show"), 2200); }
 function updateStats() { const fl = S.blocks.reduce((s, b) => s + b.fl * Math.max(1, Math.round(pathLen(b.pts, b.closed) / W)) * 2, 0); $("#stats").textContent = S.blocks.length ? `${S.blocks.length} block${S.blocks.length > 1 ? "s" : ""} · ~${(fl * 1.5).toLocaleString("en")} flats · ${S.trees.length} trees` : ""; }
 
+// ---------------------------------------------------------------- haze
+// How far one sees: 0 clear (things fade from 380 m and are gone at 2.6 km) to 1 thick (gone at about 320 m, so the
+// top of a tall tower fades out above you). The haze turns paler and greyer as it thickens, and the sky goes with it
+// (distant blocks dissolve into it rather than into a wall). Every material keeps its own fade distances, so all of
+// them are brought up to date (and again now and then, for materials made since).
+const atmos = { haze: 0.3 };
+const FOG_CLEAR = new THREE.Color(0xbcc9d3), FOG_THICK = new THREE.Color(0xc9ced1), SKY_CLEAR = new THREE.Color(0xc3d0da);
+function hazeParams(h) { const far = 2600 * Math.pow(320 / 2600, h); return { near: far * (0.146 - 0.12 * h), far }; }
+function applyHaze() {
+  scene.fog.near = FOG.near; scene.fog.far = FOG.far;
+  scene.traverse((o) => { if (!o.material) return; for (const m of Array.isArray(o.material) ? o.material : [o.material]) { const u = m.uniforms; if (!u) continue;
+    if (u.fogR) u.fogR.value.set(FOG.near, FOG.far); if (u.fogC && u.fogC.value !== FOG.color) u.fogC.value.copy(FOG.color); if (u.skyH) u.skyH.value.copy(SKY); } });
+}
+function setHaze(h) {
+  atmos.haze = Math.max(0, Math.min(1, h)); const { near, far } = hazeParams(atmos.haze);
+  FOG.near = near; FOG.far = far; FOG.color.copy(FOG_CLEAR).lerp(FOG_THICK, atmos.haze); SKY.copy(SKY_CLEAR).lerp(FOG.color, Math.min(1, atmos.haze * 1.4));
+  applyHaze(); emit("atmos"); scheduleSave();
+}
+
 // ---------------------------------------------------------------- for the input modules and the interface
 const $ = (s) => document.querySelector(s);
-const listeners = { tip: [], options: [], frame: [] };
+const listeners = { tip: [], options: [], frame: [], atmos: [] };
 export const on = (ev, fn) => listeners[ev].push(fn);           // "tip": a tip was shown; "options": redraw the options row; "frame": each frame (dt)
 function emit(ev, ...a) { for (const fn of listeners[ev]) fn(...a); }
 // Free (no snapping) and Remove (trees) can be held on the keyboard or switched on in the options row
@@ -975,14 +995,15 @@ export const now = {
 };
 async function start() {
   if (!(await load())) { ground.sync(); flash("Drag on the grass to lay your first block"); }
-  rebuild();
+  rebuild(); setHaze(atmos.haze);
   addEventListener("beforeunload", save);
-  let last = performance.now();
+  let last = performance.now(), hazeTick = 0;
   window.__sandbox = { S: () => S, D: () => draft, A: () => action && action.kind, pickAt: (x, y) => { mouse.x = x; mouse.y = y; const a = pick(); return a && { p: a.p, y: a.y, block: a.block && a.block.id, roof: a.roof }; }, rebuild, kit, camera, controls, topOf, scene, streetRoot, ground, allRoads: () => allRoads, yardRegions: () => yardRegions.map((r) => ({ id: r.y.id, area: r.Y.area })), entrances: () => cityLays.flatMap(({ lay }) => lay.out.filter((p) => p.pc === "entrance").map((p) => ({ q: p.q, n: p.n }))) };
   renderer.setAnimationLoop((t) => {
     const dt = Math.min(0.05, (t - last) / 1000); last = t;
     emit("frame", dt); if (!freeCam) controls.update();
     if (action && action.kind === "trees" && mouse.in && t - action.last > 70) { action.last = t; const at = pick(); if (at && plantAt(at)) { action.changed = true; trees.rebuild(S.trees, treeY); updateStats(); } showHover(); }
+    if (++hazeTick % 60 === 0) applyHaze();       // (materials made since the haze was set)
     ground.update(t / 1000); renderer.render(scene, camera);
   });
 }
@@ -992,5 +1013,5 @@ export {
   pick, alignGrid, demolish, clearTown, photo, flash, setMods,
   scene, overlayRoot, town, rebuild, snapshot, pushUndo, applyState, tip, snapPoint, gridSnap, tolAt, screenOf, onPlane, randFin, selOverlay, OV, cellAt,
   addRoad, roadStart, roadEnd, showRoadGhost,
-  holdStreets, freeCamera, guideRoot, gridMesh, brushRing, blockField, setSel, beginPush, beginPull, layOf, edit, ghost, undoMark, squashUndo, dropUndo, cellOnWall, showGuides,
+  holdStreets, freeCamera, setHaze, atmos, hazeParams, guideRoot, gridMesh, brushRing, blockField, setSel, beginPush, beginPull, layOf, edit, ghost, undoMark, squashUndo, dropUndo, cellOnWall, showGuides,
 };

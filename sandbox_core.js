@@ -9,6 +9,7 @@ import { createBlockKit, V, offsetPoly, polyArea, pathLen, nearestOnPath, subPat
 import { createTown, MIN_D, sameWall } from "./sandbox_town.js";
 import { roadQuad, endExt, kerbs, snapToRoads, roadAt, roadProps, KERB } from "./sandbox_streets.js";
 import { createProps } from "./props.js";
+import { entranceDetails, facadeDishes, roofAntennas, PATH_W } from "./sandbox_details.js";
 import { createTrees, createGround, TREE_NAMES, TREE_SETS, LAND, WATER_Y } from "./sandbox_nature.js";
 
 const Q = new URLSearchParams(location.search);
@@ -90,7 +91,8 @@ function rebuild() {
   }
   for (const id of [...cache.keys()]) if (!seen.has(id)) dropCache(id);
   if (city) { cityRoot.remove(city); kit.disposeGroup(city); }
-  city = kit.buildMeshes(kit.mergeLays(lays)); cityRoot.add(city);       // blocks on one grid that run into each other: drawn as one
+  const merged = kit.mergeLays(lays); cityLays = merged.map((lay, i) => ({ b: lays[i].b, lay }));
+  city = kit.buildMeshes(merged); cityRoot.add(city);       // blocks on one grid that run into each other: drawn as one
   trees.rebuild(S.trees, treeY);
   rebuildStreets();
   updateStats();
@@ -116,16 +118,48 @@ function roadMesh(list, all, mat = ground.roadMat) {   // the surfaces and kerbs
   const geo = new THREE.BufferGeometry(); geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3)); geo.setAttribute("rk", new THREE.Float32BufferAttribute(rk, 2)); geo.setAttribute("ra", new THREE.Float32BufferAttribute(ra, 2)); geo.setIndex(idx);
   const g = new THREE.Group(); g.add(new THREE.Mesh(geo, mat)); return g;
 }
-let streetKey = "", streetObj = null;
+let streetKey = "", streetObj = null, cityLays = [], detailPaths = [];
+// the paths from entrances: concrete slabs a little above the ground (the kerb stones' look, 1 m slabs)
+function pathMesh(paths) {
+  const pos = [], rk = [], ra = [], idx = [], y = 0.07;
+  for (const { a, b, w } of paths) {
+    const d = V.norm(V.sub(b, a)), n = V.mul(V.left(d), w / 2), L = V.dist(a, b), q = [V.add(a, n), V.add(b, n), V.sub(b, n), V.sub(a, n)], o = pos.length / 3;
+    q.forEach((c, i) => { pos.push(c[0], y, c[1]); rk.push(i === 0 || i === 3 ? 0 : L, 1); ra.push(0, 0); }); idx.push(o, o + 2, o + 1, o, o + 3, o + 2, o, o + 1, o + 2, o, o + 2, o + 3);
+  }
+  const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute("rk", new THREE.Float32BufferAttribute(rk, 2)); g.setAttribute("ra", new THREE.Float32BufferAttribute(ra, 2)); g.setIndex(idx);
+  return new THREE.Mesh(g, ground.roadMat);
+}
+// The things around blocks, read from the blocks as drawn (after merging: a buried or dug-out entrance gets nothing)
+function blockDetails(free) {
+  const es = [], items = [];
+  for (const { b, lay } of cityLays) {
+    const kids = S.blocks.filter((x) => x.parent === b.id), ws = [], exits = [], pl = isGround(b) ? PL : 0;
+    lay.out.forEach((p, i) => {
+      if (p.pc === "entrance") es.push({ p: p.q, out: V.mul(p.n, -1), seed: (b.seed + i * 7919) >>> 0 });
+      else if (p.pc === "window" && p.pa) ws.push({ q: p.q, n: p.n, u: V.norm(V.sub(p.pb, p.pa)), y: p.y, f: Math.round((p.y - lay.base - pl) / H) });
+      else if (p.pc === "roof_exit") exits.push(p.q);
+    });
+    items.push(...facadeDishes(ws, b.seed));
+    const holes = cutRects(b).filter((r) => r.f1 >= b.fl), u = b.closed || b.pts.length !== 2 ? null : V.norm(V.sub(b.pts[1], b.pts[0]));
+    const open = (q) => kids.some((k) => nearestOnPath(k.pts, k.closed, q).d < (k.D || 12) / 2 + 1.5)
+      || (u && holes.some((r) => { const d = V.sub(q, b.pts[0]), s1 = V.dot(d, u), w1 = V.dot(d, V.left(u)); return s1 > r.s0 - 2 && s1 < r.s1 + 2 && w1 > r.w0 - 2 && w1 < r.w1 + 2; }));
+    items.push(...roofAntennas(b, lay.top, exits, b.seed, open));
+  }
+  const ent = entranceDetails(es, { roads: S.roads, blocks: S.blocks, free });
+  return { items: [...items, ...ent.items], paths: ent.paths };
+}
 function rebuildStreets(force = false) {
-  const key = JSON.stringify([S.roads, S.blocks.filter(isGround).map((b) => [b.pts, b.D])]);
+  const key = JSON.stringify([S.roads, S.blocks]);
   if (!force && key === streetKey) return; streetKey = key;
   if (streetObj) { streetRoot.remove(streetObj); kit.disposeGroup(streetObj); streetObj = null; }
-  if (!S.roads.length) return;
-  streetObj = new THREE.Group(); streetObj.add(roadMesh(S.roads, S.roads));
+  detailPaths = [];
+  if (!S.roads.length && !S.blocks.length) return;
+  streetObj = new THREE.Group(); if (S.roads.length) streetObj.add(roadMesh(S.roads, S.roads));
   if (props) {
-    const items = [], wires = [], ctx = { roads: S.roads, blocks: S.blocks, attach: propAttach, free: (p) => ground.waterDepth(p[0], p[1]) <= 0 };
+    const free = (p) => ground.waterDepth(p[0], p[1]) <= 0, items = [], wires = [], ctx = { roads: S.roads, blocks: S.blocks, attach: propAttach, free };
     for (const r of S.roads) { const o = roadProps(r, ctx); items.push(...o.items); wires.push(...o.wires); }
+    const det = blockDetails(free); items.push(...det.items); detailPaths = det.paths;
+    if (det.paths.length) streetObj.add(pathMesh(det.paths));
     streetObj.add(props.build(items.map((it) => ({ name: it.name, p: new THREE.Vector3(...it.p), a: new THREE.Vector3(it.a[0], 0, it.a[1]), paint: [Math.floor(it.r * 4), 0, 0], r: it.r }))));
     if (wires.length) { const wp = []; for (const w of wires) for (let i = 0; i + 1 < w.length; i++) wp.push(...w[i], ...w[i + 1]); const wg = new THREE.BufferGeometry(); wg.setAttribute("position", new THREE.Float32BufferAttribute(wp, 3)); streetObj.add(new THREE.LineSegments(wg, wireMat)); }
   }
@@ -510,6 +544,7 @@ function placeOverlay(h) {                         // a blue face on the wall ab
   const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3)); g.setIndex([0, 1, 2, 0, 2, 3]); return new THREE.Mesh(g, OV.edge);
 }
 
+const onPath = (q) => detailPaths.some((pt) => { const d = V.sub(pt.b, pt.a), L2 = V.dot(d, d) || 1, t = Math.max(0, Math.min(1, V.dot(V.sub(q, pt.a), d) / L2)); return V.dist(q, V.add(pt.a, V.mul(d, t))) < PATH_W / 2 + 1; });
 // tree brush: scatter trees in the circle, keeping them apart and off the buildings' footprints
 const insideBlock = (b, p, margin) => nearestOnPath(b.pts, b.closed, p).d <= (b.D || 12) / 2 + margin;   // (open ends count as rounded: close enough)
 function plantAt(at) {
@@ -525,7 +560,7 @@ function plantAt(at) {
     if (near.some((t) => (t.x - q[0]) ** 2 + (t.z - q[1]) ** 2 < gap * gap * (0.6 + 0.8 * Math.random()))) continue;
     if (hole) { if (!inHole(q)) continue; }
     else if (onRoof) { if (!insideBlock(onRoof, q, -1.2)) continue; }
-    else if (grounded.some((b) => insideBlock(b, q, 2)) || roadAt(q, S.roads, 1) >= 0) continue;
+    else if (grounded.some((b) => insideBlock(b, q, 2)) || roadAt(q, S.roads, 1) >= 0 || onPath(q)) continue;
     const name = set[Math.floor(Math.random() * set.length)], t = { x: q[0], z: q[1], n: TREE_NAMES.indexOf(name), v: Math.floor(Math.random() * 6), rot: Math.random() * 6.283, sc: 0.75 + Math.random() * 0.45, b: onRoof ? onRoof.id : null, ...(hole ? { f: at.floor } : {}) };
     S.trees.push(t); near.push(t); added = true;
   }
@@ -876,7 +911,7 @@ async function start() {
   rebuild();
   addEventListener("beforeunload", save);
   let last = performance.now();
-  window.__sandbox = { S: () => S, D: () => draft, A: () => action && action.kind, pickAt: (x, y) => { mouse.x = x; mouse.y = y; const a = pick(); return a && { p: a.p, y: a.y, block: a.block && a.block.id, roof: a.roof }; }, rebuild, kit, camera, controls, topOf, scene, streetRoot, ground };
+  window.__sandbox = { S: () => S, D: () => draft, A: () => action && action.kind, pickAt: (x, y) => { mouse.x = x; mouse.y = y; const a = pick(); return a && { p: a.p, y: a.y, block: a.block && a.block.id, roof: a.roof }; }, rebuild, kit, camera, controls, topOf, scene, streetRoot, ground, entrances: () => cityLays.flatMap(({ lay }) => lay.out.filter((p) => p.pc === "entrance").map((p) => ({ q: p.q, n: p.n }))) };
   renderer.setAnimationLoop((t) => {
     const dt = Math.min(0.05, (t - last) / 1000); last = t;
     emit("frame", dt); controls.update();

@@ -9,6 +9,7 @@ import { createBlockKit, V, offsetPoly, polyArea, pathLen, nearestOnPath, subPat
 import { createTown, MIN_D, sameWall } from "./sandbox_town.js";
 import { roadStrip, kerbs, prepRoads, snapToRoads, roadAt, roadProps, KERB } from "./sandbox_streets.js";
 import { createProps } from "./props.js";
+import { createClouds } from "./sandbox_sky.js";
 import { entranceDetails, facadeDishes, roofAntennas, blockField, PATH_W } from "./sandbox_details.js";
 import { yardCells, yardLayout, CELL } from "./sandbox_yards.js";
 import { createTrees, createGround, TREE_NAMES, TREE_SETS, LAND, WATER_Y } from "./sandbox_nature.js";
@@ -278,7 +279,7 @@ async function load() {
   if (!o || Q.has("fresh")) return false;
   S = o.S; S.roads ||= []; S.yards ||= []; if (o.cam) { camera.position.fromArray(o.cam.slice(0, 3)); controls.target.fromArray(o.cam.slice(3)); controls.update(); }
   if (o.grid) Object.assign(grid, o.grid);
-  if (o.atmos) atmos.haze = o.atmos.haze;
+  if (o.atmos) { atmos.haze = o.atmos.haze; if (o.atmos.clouds) Object.assign(atmos.clouds, o.atmos.clouds); }
   const land = o.land || o.splat; if (land) await ground.deserialize(land);
   return true;
 }
@@ -926,7 +927,7 @@ function wallHL(b, w) {
 }
 function photo() {                                // no grid, guides or highlights in the picture
   const vis = [gridMesh, guideRoot, overlayRoot, brushRing].map((o) => [o, o.visible]); vis.forEach(([o]) => (o.visible = false));
-  renderer.render(scene, camera); vis.forEach(([o, v]) => (o.visible = v));
+  clouds.render(scene, camera); vis.forEach(([o, v]) => (o.visible = v));
   renderer.domElement.toBlob(async (b) => {
     const name = `panelki_${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-")}.png`, file = new File([b], name, { type: "image/png" });
     if (prof.share && navigator.canShare && navigator.canShare({ files: [file] })) { try { await navigator.share({ files: [file] }); return; } catch (e) { if (e.name === "AbortError") return; } }   // a phone: save or send it from the share sheet
@@ -948,7 +949,10 @@ function updateStats() { const fl = S.blocks.reduce((s, b) => s + b.fl * Math.ma
 // top of a tall tower fades out above you). The haze turns paler and greyer as it thickens, and the sky goes with it
 // (distant blocks dissolve into it rather than into a wall). Every material keeps its own fade distances, so all of
 // them are brought up to date (and again now and then, for materials made since).
-const atmos = { haze: 0.3 };
+const atmos = { haze: 0.3, clouds: { on: false, base: 300, cover: 0.7 } };
+const clouds = createClouds(renderer, FOG);
+// the cloud deck: on or off, its base height (m) and how much of the sky it covers (0..1)
+function setClouds(c) { Object.assign(atmos.clouds, c); Object.assign(clouds.state, atmos.clouds); emit("atmos"); scheduleSave(); }
 const FOG_CLEAR = new THREE.Color(0xbcc9d3), FOG_THICK = new THREE.Color(0xc9ced1), SKY_CLEAR = new THREE.Color(0xc3d0da);
 function hazeParams(h) { const far = 2600 * Math.pow(320 / 2600, h); return { near: far * (0.146 - 0.12 * h), far }; }
 function applyHaze() {
@@ -995,16 +999,16 @@ export const now = {
 };
 async function start() {
   if (!(await load())) { ground.sync(); flash("Drag on the grass to lay your first block"); }
-  rebuild(); setHaze(atmos.haze);
+  rebuild(); setHaze(atmos.haze); Object.assign(clouds.state, atmos.clouds);
   addEventListener("beforeunload", save);
   let last = performance.now(), hazeTick = 0;
-  window.__sandbox = { S: () => S, D: () => draft, A: () => action && action.kind, pickAt: (x, y) => { mouse.x = x; mouse.y = y; const a = pick(); return a && { p: a.p, y: a.y, block: a.block && a.block.id, roof: a.roof }; }, rebuild, kit, camera, controls, topOf, scene, streetRoot, ground, allRoads: () => allRoads, yardRegions: () => yardRegions.map((r) => ({ id: r.y.id, area: r.Y.area })), entrances: () => cityLays.flatMap(({ lay }) => lay.out.filter((p) => p.pc === "entrance").map((p) => ({ q: p.q, n: p.n }))) };
+  window.__sandbox = { S: () => S, D: () => draft, A: () => action && action.kind, pickAt: (x, y) => { mouse.x = x; mouse.y = y; const a = pick(); return a && { p: a.p, y: a.y, block: a.block && a.block.id, roof: a.roof }; }, rebuild, kit, camera, controls, topOf, scene, streetRoot, ground, renderer, draw: () => clouds.render(scene, camera), clouds, allRoads: () => allRoads, yardRegions: () => yardRegions.map((r) => ({ id: r.y.id, area: r.Y.area })), entrances: () => cityLays.flatMap(({ lay }) => lay.out.filter((p) => p.pc === "entrance").map((p) => ({ q: p.q, n: p.n }))) };
   renderer.setAnimationLoop((t) => {
     const dt = Math.min(0.05, (t - last) / 1000); last = t;
     emit("frame", dt); if (!freeCam) controls.update();
     if (action && action.kind === "trees" && mouse.in && t - action.last > 70) { action.last = t; const at = pick(); if (at && plantAt(at)) { action.changed = true; trees.rebuild(S.trees, treeY); updateStats(); } showHover(); }
     if (++hazeTick % 60 === 0) applyHaze();       // (materials made since the haze was set)
-    ground.update(t / 1000); renderer.render(scene, camera);
+    ground.update(t / 1000); clouds.render(scene, camera, t / 1000);
   });
 }
 export {
@@ -1013,5 +1017,5 @@ export {
   pick, alignGrid, demolish, clearTown, photo, flash, setMods,
   scene, overlayRoot, town, rebuild, snapshot, pushUndo, applyState, tip, snapPoint, gridSnap, tolAt, screenOf, onPlane, randFin, selOverlay, OV, cellAt,
   addRoad, roadStart, roadEnd, showRoadGhost,
-  holdStreets, freeCamera, setHaze, atmos, hazeParams, guideRoot, gridMesh, brushRing, blockField, setSel, beginPush, beginPull, layOf, edit, ghost, undoMark, squashUndo, dropUndo, cellOnWall, showGuides,
+  holdStreets, freeCamera, setHaze, setClouds, atmos, hazeParams, guideRoot, gridMesh, brushRing, blockField, setSel, beginPush, beginPull, layOf, edit, ghost, undoMark, squashUndo, dropUndo, cellOnWall, showGuides,
 };

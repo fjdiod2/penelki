@@ -51,7 +51,8 @@
   #photobar button { background: none; border: 0; border-radius: 9px; padding: 7px 12px; color: var(--text); } #photobar button:hover { background: rgba(255,255,255,.1); }
   #photobar #ph-shot { background: rgba(255, 215, 94, .9); color: #222; font-weight: 600; }
   #hazebox { position: fixed; right: 16px; top: 62px; padding: 8px 4px 6px; display: none; flex-direction: column; gap: 2px; } #hazebox.open { display: flex; }
-  #hazebox small { color: var(--dim); padding: 0 10px; font-size: 11.5px; } body.clean #hazebox { display: none !important; }
+  #hazebox small { color: var(--dim); padding: 0 10px; font-size: 11.5px; } #hazebox .wsep { height: 1px; background: var(--line); margin: 6px 8px; }
+  #hazebox .cl { display: none; } #hazebox.clouds .cl { display: flex; } #hazebox small.cl { display: none; } #hazebox.clouds small.cl { display: block; } #hazebox .chip { align-self: flex-start; margin-left: 4px; } body.clean #hazebox { display: none !important; }
   body.choosing #walk { background: rgba(255, 215, 94, .9); color: #222; }
   body.touch #tip { white-space: normal; max-width: calc(100vw - 32px); box-sizing: border-box; }
   #bar.more-r, #sub.more-r { -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 44px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 44px), transparent); }
@@ -72,7 +73,7 @@
 <script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }</script>
 </head><body>
 <div id="title" class="panel"><b>Панельки</b><span>build a microdistrict</span><button id="helpbtn" title="Controls">?</button></div>
-<div id="topright" class="panel"><button id="undo" title="Undo (Ctrl/⌘ Z)">Undo</button><button id="redo" title="Redo (Ctrl/⌘ Shift Z)">Redo</button><button id="walk" title="Stand somewhere in the town and look about (V)">Walk</button><button id="hazebtn" title="How far one can see">Haze</button><button id="photo" title="Save a picture (P)">Photo</button><button id="new" title="Start over (undoable)">New</button></div>
+<div id="topright" class="panel"><button id="undo" title="Undo (Ctrl/⌘ Z)">Undo</button><button id="redo" title="Redo (Ctrl/⌘ Shift Z)">Redo</button><button id="walk" title="Stand somewhere in the town and look about (V)">Walk</button><button id="hazebtn" title="Haze and clouds">Weather</button><button id="photo" title="Save a picture (P)">Photo</button><button id="new" title="Start over (undoable)">New</button></div>
 <div id="stats"></div>
 <div id="help" class="panel">
   <p><b>On a phone</b> drag one finger to move around · two fingers: pinch to zoom, twist to turn, move both up or down to tilt · <b>Block</b>: tap the ground for a block, then drag its middle to move it and its arrows for walls and floors; <i>Done</i> (or <i>Cancel</i>). Tap a built block for its arrows and the blue tabs on its roof: drag one inward to step back, then place the new tier the same way. Tap a selected roof to build on it · <b>Extrude</b>: tap a panel, drag the arrows round it to stretch the choice, <i>Next</i>, then drag the arrow · Trees and Land paint with one finger</p>
@@ -87,7 +88,10 @@
   <p>Your town is saved in this browser automatically.</p>
 </div>
 <div id="dock"><div id="touchbar"><button id="t-done" style="display:none">Done</button><button id="t-cancel" style="display:none">Cancel</button><button id="t-del" style="display:none">Delete</button></div><div id="hint"></div><div id="sub" class="panel"></div><div id="bar" class="panel"></div></div>
-<div id="hazebox" class="panel"><label class="sz">haze <input type="range" class="haze" min="0" max="100" step="1" value="30"><b class="hazev">30%</b></label><small class="hazed"></small></div>
+<div id="hazebox" class="panel"><label class="sz">haze <input type="range" class="haze" min="0" max="100" step="1" value="30"><b class="hazev">30%</b></label><small class="hazed"></small>
+  <span class="wsep"></span><button class="chip" id="cloudsbtn"><i class="sw dice">☁</i>Low clouds</button>
+  <label class="sz cl">base <input type="range" id="cloudbase" min="80" max="800" step="10" value="300"><b id="cloudbasev">300 m</b></label><small class="cl" id="cloudfl"></small>
+  <label class="sz cl">cover <input type="range" id="cloudcover" min="10" max="100" step="1" value="70"><b id="cloudcoverv">70%</b></label></div>
 <div id="photobar" class="panel"><button id="ph-exit">Exit</button><label class="sz">lens <input type="range" id="ph-lens" min="14" max="50" step="1" value="24"><b id="ph-mm">24 mm</b></label><label class="sz">haze <input type="range" class="haze" min="0" max="100" step="1" value="30"><b class="hazev">30%</b></label><button id="ph-shot">Take photo</button></div>
 <div id="tip" style="display:none"></div><div id="flash" class="panel"></div>
 <script type="module" src="./sandbox.js"></script>

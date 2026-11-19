@@ -1,5 +1,5 @@
 // Панельки, the interface both inputs share: the tool bar, the options row under it, and the buttons at the top.
-import { setHaze, atmos, hazeParams } from "./sandbox_core.js";
+import { setHaze, setClouds, atmos, hazeParams } from "./sandbox_core.js";
 import { ui, grid, LAND, kit, now, cursor as mouse, cancel, showHover, scheduleSave, undo, redo, photo, flash, clearTown, on } from "./sandbox_core.js";
 
 export const TOOLS = [  { id: "line", key: "1", name: "Block", hint: "Drag a wall, swing out to widen · drag any wall to push or pull it · drag a roof edge inward to step back" },
@@ -75,7 +75,13 @@ function showHaze() {
   for (const el of document.querySelectorAll("input.haze")) el.value = v;
   for (const el of document.querySelectorAll(".hazev")) el.textContent = `${v}%`;
   $("#hazebox .hazed").textContent = `things fade out by ${far >= 1000 ? (far / 1000).toFixed(1) + " km" : Math.round(far / 10) * 10 + " m"}`;
+  const c = atmos.clouds; $("#hazebox").classList.toggle("clouds", c.on); $("#cloudsbtn").classList.toggle("on", c.on);
+  $("#cloudbase").value = c.base; $("#cloudbasev").textContent = `${c.base} m`; $("#cloudfl").textContent = `a block of about ${Math.round((c.base - 0.8) / kit.H)} floors reaches it`;
+  $("#cloudcover").value = Math.round(c.cover * 100); $("#cloudcoverv").textContent = `${Math.round(c.cover * 100)}%`;
 }
+$("#cloudsbtn").onclick = () => setClouds({ on: !atmos.clouds.on });
+$("#cloudbase").addEventListener("input", (e) => setClouds({ base: +e.target.value }));
+$("#cloudcover").addEventListener("input", (e) => setClouds({ cover: +e.target.value / 100 }));
 for (const el of document.querySelectorAll("input.haze")) el.addEventListener("input", (e) => setHaze(+e.target.value / 100));
 on("atmos", showHaze);
 $("#hazebtn").onclick = () => { $("#hazebox").classList.toggle("open"); showHaze(); };

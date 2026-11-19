@@ -12,7 +12,7 @@
 import { THREE, renderer, camera, controls, ui, grid, kit, cursor as mouse, now, setInput, setMods, press, move, release, abortPress, cancel,
   showHover, updateDraft, commitDraft, startHeight, flash, on, pick, overlayRoot, town, rebuild, snapshot, pushUndo, applyState, tip,
   snapPoint, tolAt, screenOf, onPlane, randFin, selOverlay, OV, cellAt, cellOnWall, setSel, beginPush, beginPull, layOf, edit, ghost,
-  undoMark, squashUndo, dropUndo, showGuides, addRoad, roadStart, roadEnd } from "./sandbox_core.js";
+  undoMark, squashUndo, dropUndo, showGuides, addRoad, roadStart, roadEnd, holdStreets } from "./sandbox_core.js";
 import { renderSub } from "./sandbox_ui.js";
 import { sameWall } from "./sandbox_town.js";
 import { classifyTwo, blockHandles, outline, selHandles, arrange, hitHandle } from "./sandbox_handles.js";
@@ -184,7 +184,7 @@ function startHandle(h) {
   if (h.kind === "floors") {
     const s0 = screenOf(h.at[0], h.at[1], h.at[2]), s1 = screenOf(h.at[0], h.at[1] + H, h.at[2]);
     hd = { h, b, before, fl0: b.fl, y0: g.y0, ppf: Math.min(40, Math.max(14, Math.abs(s0[1] - s1[1]))) };
-  } else if (h.kind === "move") { const grab = onPlane(h.at[1]); if (!grab) return; hd = { h, b, before, grab, b0: JSON.parse(JSON.stringify(b)), applied: [0, 0] }; }
+  } else if (h.kind === "move") { const grab = onPlane(h.at[1]); if (!grab) return; hd = { h, b, before, grab, b0: JSON.parse(JSON.stringify(b)), applied: [0, 0] }; holdStreets(true); }
   else if (h.kind === "step") { const grab = onPlane(h.at[1]); if (!grab) return; hd = { h, b, before, grab, inset: 0 }; }
 }
 const clampi = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -233,7 +233,7 @@ function endHandle() {
   if (x.h.kind === "push" || x.h.kind === "pull") { release(); if (x.h.kind === "pull" && !now.sel) cv = null; return; }
   if (x.h.kind === "edge" || x.h.kind === "move" && ui.tool === "carve") return;
   if (x.h.kind === "floors") { if (x.b.fl !== x.fl0) pushUndo(x.before); return; }
-  if (x.h.kind === "move") { showGuides([]); if (V.len(x.applied) > 1e-6) pushUndo(x.before); return; }
+  if (x.h.kind === "move") { showGuides([]); holdStreets(false); if (V.len(x.applied) > 1e-6) pushUndo(x.before); return; }
   ghost(null);
   if (x.inset >= 0.5 && x.t) {                     // the step back: a block on the roof, three floors, now being placed
     const b = x.b; finishPlace();
@@ -244,7 +244,7 @@ function abortHandle() {
   const x = hd; hd = null; if (!x) return;
   if (x.h.kind === "push" || x.h.kind === "pull") { abortPress(); return; }
   if (x.h.kind === "edge" || x.h.kind === "move" && ui.tool === "carve") { setSel(x.s0); return; }
-  ghost(null); showGuides([]);
+  ghost(null); showGuides([]); if (x.h.kind === "move") holdStreets(false);
   if ((x.h.kind === "floors" && x.b.fl !== x.fl0) || (x.h.kind === "move" && V.len(x.applied) > 1e-6)) applyState(x.before);
 }
 

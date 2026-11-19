@@ -53,23 +53,34 @@ export function roadStrip(r, roads) {
 }
 export function roadQuad(r, roads) { const { left, right } = roadStrip(r, roads); return [...left, ...[...right].reverse()]; }   // its outline
 // is p on the surface of road o (as drawn, with its ends moved)?
-export function onRoad(p, o, roads, margin = 0) {
-  const c = extended(o, roads), n = nearestOn(c, p); if (!n || n.d >= o.w / 2 + margin) return false;
+export function onRoad(p, o, roads, margin = 0) { return onLine(p, o, extended(o, roads), margin); }
+function onLine(p, o, c, margin) {
+  const n = nearestOn(c, p); if (!n || n.d >= o.w / 2 + margin) return false;
   if (o.closed) return true;
   if (n.i === 0 && n.t < 0) return n.t * V.dist(c[0], c[1]) > -margin;                                   // square ends
   if (n.i === c.length - 2 && n.t > 1) return (n.t - 1) * V.dist(c[n.i], c[n.i + 1]) < margin;
   return true;
 }
+// For many questions about the same roads: each road's surface worked out once, with a box round it to skip it fast.
+// -> a list to pass as `prep` (or to onRoads)
+export function prepRoads(roads) {
+  return roads.map((o) => { const c = extended(o, roads), xs = c.map((q) => q[0]), zs = c.map((q) => q[1]), h = o.w / 2; return { o, c, box: [Math.min(...xs) - h, Math.min(...zs) - h, Math.max(...xs) + h, Math.max(...zs) + h] }; });
+}
+// is p on any of the prepared roads (but `skip`)?
+export function onRoads(p, prep, margin = 0, skip = null) {
+  for (const { o, c, box } of prep) { if (o === skip || p[0] < box[0] - margin || p[1] < box[1] - margin || p[0] > box[2] + margin || p[1] > box[3] + margin) continue; if (onLine(p, o, c, margin)) return true; }
+  return false;
+}
 // the kerbs along both sides of r, as runs of points, stopping where another road's surface is
-export function kerbs(r, roads) {
-  const c = extended(r, roads), others = roads.filter((o) => o !== r), out = [];
+export function kerbs(r, roads, prep = prepRoads(roads)) {
+  const c = extended(r, roads), out = [];
   for (const side of [1, -1]) {
     let line = offsetPoly(r.closed ? r.pts : c, !!r.closed, side * (r.w / 2 + KERB.w / 2)); if (r.closed) line = [...line, line[0]];
     let run = null; const first = out.length;
     for (let i = 0; i + 1 < line.length; i++) {
       const a = line[i], b = line[i + 1], L = V.dist(a, b), n = Math.max(1, Math.ceil(L / 0.5));
       for (let k = i === 0 ? 0 : 1; k <= n; k++) {
-        const p = V.lerp(a, b, k / n), free = !others.some((o) => onRoad(p, o, roads, KERB.w / 2));
+        const p = V.lerp(a, b, k / n), free = !onRoads(p, prep, KERB.w / 2, r);
         if (free) { if (!run) run = [p]; else run.push(p); } else if (run) { if (run.length > 1 && pathLen(run) > 0.2) out.push(run); run = null; }
       }
     }
@@ -105,10 +116,10 @@ const CARS = ["car_photo_0", "car_photo_1", "car_photo_2", "car_photo_3"];
 function minDistPath(b, p) { let m = Infinity; const n = b.pts.length; for (let i = 0; i < (b.closed ? n : n - 1); i++) m = Math.min(m, segDist(p, b.pts[i], b.pts[(i + 1) % n]).d); return m; }
 const nearBlock = (p, blocks, d) => blocks.some((b) => !b.parent && !b.at && minDistPath(b, p) < (b.D || 12) / 2 + d);
 export function roadProps(r, ctx) {
-  const { roads, blocks = [], attach = {}, free = () => true } = ctx;
+  const { roads, blocks = [], attach = {}, free = () => true } = ctx, prep = ctx.prep || prepRoads(roads);
   const R = rng((r.id * 2654435761) >>> 0), P = loopOf(r), L = pathLen(P), items = [], wires = [];
-  const others = roads.filter((o) => o !== r), side = R() < 0.5 ? 1 : -1;
-  const clear = (p, m) => free(p) && !others.some((o) => onRoad(p, o, roads, m)) && !blocks.some((b) => !b.parent && !b.at && minDistPath(b, p) < (b.D || 12) / 2 + m);
+  const side = R() < 0.5 ? 1 : -1;
+  const clear = (p, m) => free(p) && !onRoads(p, prep, m, r) && !(ctx.field ? ctx.field.dist(p) < m : blocks.some((b) => !b.parent && !b.at && minDistPath(b, p) < (b.D || 12) / 2 + m));
   const frame = (s) => { let acc = 0; for (let i = 0; i + 1 < P.length; i++) { const l = V.dist(P[i], P[i + 1]); if (s <= acc + l || i + 2 === P.length) { const u = V.norm(V.sub(P[i + 1], P[i])); return { p: V.add(P[i], V.mul(u, Math.min(l, s - acc))), u }; } acc += l; } return { p: P[0], u: [1, 0] }; };
   const at = (s, off) => { const f = frame(s); return { p: V.add(f.p, V.mul(V.left(f.u), off)), u: f.u }; };
   const facing = (back) => [-back[1], back[0]];        // the "along" that turns a prop's back (+y) to `back` on the plan
@@ -140,7 +151,7 @@ export function roadProps(r, ctx) {
     for (let s = 3 + R() * 3; s < L - 3; s += 5.2 + R() * 2.5) {
       if (R() < 0.45) continue;
       const off = sd * (r.w / 2 - (r.w >= 7 ? 1.1 : 0.9)), { p, u } = at(s, off);
-      if (!nearBlock(p, blocks, 30) || taken.some((t) => V.dist(t, p) < 3.5)) continue;
+      if (!(ctx.field ? ctx.field.dist(p) < 30 : nearBlock(p, blocks, 30)) || taken.some((t) => V.dist(t, p) < 3.5)) continue;
       if (!clear(p, -1)) continue;                  // (cars stand on this road, but not on a junction with another)
       const name = CARS[Math.floor(R() * CARS.length)], dir = R() < 0.5 ? u : V.mul(u, -1);
       items.push({ name, p: [p[0], 0.03, p[1]], a: dir, paint: [0, 0, 0], r: R() }); taken.push(p);

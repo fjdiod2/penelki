@@ -7,9 +7,9 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { createBlockKit, V, offsetPoly, polyArea, pathLen, nearestOnPath, subPath, cutRects } from "./sandbox_blocks.js";
 import { createTown, MIN_D, sameWall } from "./sandbox_town.js";
-import { roadStrip, kerbs, snapToRoads, roadAt, roadProps, KERB } from "./sandbox_streets.js";
+import { roadStrip, kerbs, prepRoads, snapToRoads, roadAt, roadProps, KERB } from "./sandbox_streets.js";
 import { createProps } from "./props.js";
-import { entranceDetails, facadeDishes, roofAntennas, PATH_W } from "./sandbox_details.js";
+import { entranceDetails, facadeDishes, roofAntennas, blockField, PATH_W } from "./sandbox_details.js";
 import { yardCells, yardLayout, CELL } from "./sandbox_yards.js";
 import { createTrees, createGround, TREE_NAMES, TREE_SETS, LAND, WATER_Y } from "./sandbox_nature.js";
 
@@ -106,13 +106,13 @@ const streetRoot = new THREE.Group(); scene.add(streetRoot);
 const wireMat = new THREE.LineBasicMaterial({ color: 0x262626 });
 const ROAD_Y = 0.05;
 function roadMesh(list, all, mat = ground.roadMat, y = ROAD_Y) {   // the surfaces and kerbs of the roads in list, among all, as one mesh
-  const pos = [], rk = [], ra = [], idx = [];
+  const pos = [], rk = [], ra = [], idx = [], kprep = prepRoads(all);
   const quad = (ps, ys, ks, ky, al = [0, 0, 0, 0], L = 0) => { const o = pos.length / 3; ps.forEach((p, n) => { pos.push(p[0], ys[n], p[1]); rk.push(ks[n], ky); ra.push(al[n], L); }); idx.push(o, o + 2, o + 1, o, o + 3, o + 2, o, o + 1, o + 2, o, o + 2, o + 3); };
   for (const r of list) {
     const { left, right, s, len } = roadStrip(r, all);       // (rk: across -1..1, -width; ra: metres along, length)
     for (let i = 0; i + 1 < left.length; i++) quad([left[i], left[i + 1], right[i + 1], right[i]], [y, y, y, y], [1, 1, -1, -1], -r.w, [s[i], s[i + 1], s[i + 1], s[i]], len);
     if (mat !== ground.roadMat) continue;
-    for (const run of kerbs(r, all)) {                // a kerb: its top and both sides; rk.x counts metres along it (1 m stones)
+    for (const run of kerbs(r, all, kprep)) {                // a kerb: its top and both sides; rk.x counts metres along it (1 m stones)
       let acc = 0;
       for (let i = 0; i + 1 < run.length; i++) {
         const a = run[i], b = run[i + 1], d = V.norm(V.sub(b, a)), n = V.mul(V.left(d), KERB.w / 2), A = V.add(a, n), B = V.add(b, n), C = V.sub(b, n), Dd = V.sub(a, n), h = KERB.h, s0 = acc, s1 = (acc += V.dist(a, b));
@@ -135,48 +135,64 @@ function pathMesh(paths) {
   const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute("rk", new THREE.Float32BufferAttribute(rk, 2)); g.setAttribute("ra", new THREE.Float32BufferAttribute(ra, 2)); g.setIndex(idx);
   return new THREE.Mesh(g, ground.roadMat);
 }
-// The things around blocks, read from the blocks as drawn (after merging: a buried or dug-out entrance gets nothing)
-function blockDetails(free) {
-  const es = [], items = [];
+// The things around blocks, read from the blocks as drawn (after merging: a buried or dug-out entrance gets nothing).
+// Two layers, each made again only when what it depends on changes: the street layer (roads, yards, entrance paths and
+// everything along them) depends only on where blocks stand, not on their floors or paint, so dragging floors or
+// repainting does not redo it; the block layer (dishes, antennas) depends on the blocks and is cheap.
+const entrancesNow = () => cityLays.flatMap(({ b, lay }) => lay.out.flatMap((p, i) => (p.pc === "entrance" ? [{ p: p.q, out: V.mul(p.n, -1), seed: (b.seed + i * 7919) >>> 0, b: b.id }] : [])));
+function blockExtras() {                           // dishes on facades, antennas on roofs
+  const items = [];
   for (const { b, lay } of cityLays) {
     const kids = S.blocks.filter((x) => x.parent === b.id), ws = [], exits = [], pl = isGround(b) ? PL : 0;
-    lay.out.forEach((p, i) => {
-      if (p.pc === "entrance") es.push({ p: p.q, out: V.mul(p.n, -1), seed: (b.seed + i * 7919) >>> 0, b: b.id });
-      else if (p.pc === "window" && p.pa) ws.push({ q: p.q, n: p.n, u: V.norm(V.sub(p.pb, p.pa)), y: p.y, f: Math.round((p.y - lay.base - pl) / H) });
+    for (const p of lay.out) {
+      if (p.pc === "window" && p.pa) ws.push({ q: p.q, n: p.n, u: V.norm(V.sub(p.pb, p.pa)), y: p.y, f: Math.round((p.y - lay.base - pl) / H) });
       else if (p.pc === "roof_exit") exits.push(p.q);
-    });
+    }
     items.push(...facadeDishes(ws, b.seed));
     const holes = cutRects(b).filter((r) => r.f1 >= b.fl), u = b.closed || b.pts.length !== 2 ? null : V.norm(V.sub(b.pts[1], b.pts[0]));
     const open = (q) => kids.some((k) => nearestOnPath(k.pts, k.closed, q).d < (k.D || 12) / 2 + 1.5)
       || (u && holes.some((r) => { const d = V.sub(q, b.pts[0]), s1 = V.dot(d, u), w1 = V.dot(d, V.left(u)); return s1 > r.s0 - 2 && s1 < r.s1 + 2 && w1 > r.w0 - 2 && w1 < r.w1 + 2; }));
     items.push(...roofAntennas(b, lay.top, exits, b.seed, open));
   }
-  return { items, es };
+  return items;
 }
-let yardRegions = [], allRoads = [];               // the yards as worked out now ({ y, Y }), and the roads with their driveways
+const propMeshes = (items) => props.build(items.map((it) => ({ name: it.name, p: new THREE.Vector3(...it.p), a: new THREE.Vector3(it.a[0], 0, it.a[1]), paint: [Math.floor(it.r * 4), 0, 0], r: it.r })));
+let yardRegions = [], allRoads = [], extraKey = "", extraObj = null, field = null, roadPrep = [];   // the yards as worked out now ({ y, Y }), the roads with their driveways
+// While a drag moves blocks or roads (a wall, a block, a road's end), the street layer is held and made once on release.
+let streetsHeld = false;
+function holdStreets(on) { streetsHeld = on; if (!on) rebuildStreets(); }
 function rebuildStreets(force = false) {
-  const key = JSON.stringify([S.roads, S.blocks, S.yards]);
-  if (!force && key === streetKey) return; streetKey = key;
-  if (streetObj) { streetRoot.remove(streetObj); kit.disposeGroup(streetObj); streetObj = null; }
-  detailPaths = []; yardRegions = []; allRoads = S.roads;
-  if (!S.roads.length && !S.blocks.length) return;
-  const free = (p) => ground.waterDepth(p[0], p[1]) <= 0, det = blockDetails(free), items = [...det.items], yardRoads = [];
-  for (const y of S.yards) {                        // each yard: its shape now, and what is laid out in it
-    const Y = yardCells(y.p, { blocks: S.blocks, roads: S.roads, free }); if (!Y) continue; yardRegions.push({ y, Y });
-    const L = yardLayout(Y, { id: y.id, seed: y.seed, entrances: det.es, blocks: S.blocks, roads: [...S.roads, ...yardRoads], free });
-    yardRoads.push(...L.roads); items.push(...L.items);
+  const free = (p) => ground.waterDepth(p[0], p[1]) <= 0;
+  const key = JSON.stringify([S.roads, S.yards, S.blocks.map((b) => [b.id, b.pts, b.D, b.closed, b.parent, b.at, b.seed, b.cuts])]);
+  if ((force || key !== streetKey) && !(streetsHeld && !force)) {
+    streetKey = key; field = blockField(S.blocks); roadPrep = prepRoads(S.roads);
+    if (streetObj) { streetRoot.remove(streetObj); kit.disposeGroup(streetObj); streetObj = null; }
+    detailPaths = []; yardRegions = []; allRoads = S.roads;
+    if (S.roads.length || S.blocks.length) {
+      const es = entrancesNow(), items = [], yardRoads = [];
+      for (const y of S.yards) {                    // each yard: its shape now, and what is laid out in it
+        const Y = yardCells(y.p, { blocks: S.blocks, roads: S.roads, free, field, prep: roadPrep }); if (!Y) continue; yardRegions.push({ y, Y });
+        const L = yardLayout(Y, { id: y.id, seed: y.seed, entrances: es, blocks: S.blocks, roads: [...S.roads, ...yardRoads], free, field });
+        yardRoads.push(...L.roads); items.push(...L.items);
+      }
+      allRoads = [...S.roads, ...yardRoads];
+      const prep = prepRoads(allRoads), ent = entranceDetails(es, { roads: allRoads, blocks: S.blocks, free, field, prep }); detailPaths = ent.paths;
+      streetObj = new THREE.Group(); if (allRoads.length) streetObj.add(roadMesh(allRoads, allRoads));
+      if (ent.paths.length) streetObj.add(pathMesh(ent.paths));
+      if (props) {
+        const wires = [], ctx = { roads: allRoads, blocks: S.blocks, attach: propAttach, free, field, prep };
+        for (const r of allRoads) { const o = roadProps(r, ctx); items.push(...o.items); wires.push(...o.wires); }
+        items.push(...ent.items); streetObj.add(propMeshes(items));
+        if (wires.length) { const wp = []; for (const w of wires) for (let i = 0; i + 1 < w.length; i++) wp.push(...w[i], ...w[i + 1]); const wg = new THREE.BufferGeometry(); wg.setAttribute("position", new THREE.Float32BufferAttribute(wp, 3)); streetObj.add(new THREE.LineSegments(wg, wireMat)); }
+      }
+      streetRoot.add(streetObj);
+    }
   }
-  allRoads = [...S.roads, ...yardRoads];
-  streetObj = new THREE.Group(); if (allRoads.length) streetObj.add(roadMesh(allRoads, allRoads));
-  if (props) {
-    const wires = [], ctx = { roads: allRoads, blocks: S.blocks, attach: propAttach, free };
-    for (const r of allRoads) { const o = roadProps(r, ctx); items.push(...o.items); wires.push(...o.wires); }
-    const ent = entranceDetails(det.es, { roads: allRoads, blocks: S.blocks, free }); items.push(...ent.items); detailPaths = ent.paths;
-    if (ent.paths.length) streetObj.add(pathMesh(ent.paths));
-    streetObj.add(props.build(items.map((it) => ({ name: it.name, p: new THREE.Vector3(...it.p), a: new THREE.Vector3(it.a[0], 0, it.a[1]), paint: [Math.floor(it.r * 4), 0, 0], r: it.r }))));
-    if (wires.length) { const wp = []; for (const w of wires) for (let i = 0; i + 1 < w.length; i++) wp.push(...w[i], ...w[i + 1]); const wg = new THREE.BufferGeometry(); wg.setAttribute("position", new THREE.Float32BufferAttribute(wp, 3)); streetObj.add(new THREE.LineSegments(wg, wireMat)); }
+  const ekey = JSON.stringify(S.blocks);
+  if (force || ekey !== extraKey) {
+    extraKey = ekey; if (extraObj) { streetRoot.remove(extraObj); kit.disposeGroup(extraObj); extraObj = null; }
+    if (props && S.blocks.length) { extraObj = propMeshes(blockExtras()); streetRoot.add(extraObj); }
   }
-  streetRoot.add(streetObj);
 }
 // where a road from a toward cur ends: on another road (its end, or joining it), else as a block's wall would (square
 // to the grid or a neighbour, in whole panels, or up to a guide) -> { p, why, guides }
@@ -196,7 +212,7 @@ function roadPress() {
   const p = onPlane(0); if (!p) return; const tol = tolAt(p, 0);
   if (mouse.shift) for (const r of S.roads) for (let k = 0; k < 2; k++) if (V.dist(p, r.pts[k]) < tol) {
     const at = r.pts[k], ends = []; for (const o of S.roads) for (let j = 0; j < 2; j++) if (V.dist(o.pts[j], at) < 0.05) ends.push([o, j]);
-    action = { kind: "roadEnd", r, k, ends, before: snapshot(), guides: [], why: "" }; return;
+    action = { kind: "roadEnd", r, k, ends, before: snapshot(), guides: [], why: "" }; streetsHeld = true; return;
   }
   action = { kind: "road", a: roadStart(p), a0: p, b: null, why: "", guides: [] };
 }
@@ -205,7 +221,7 @@ const yardFree = (p) => ground.waterDepth(p[0], p[1]) <= 0;
 let yardPreview = { key: "", Y: null };
 function yardAtCursor(p) {                          // the yard a click at p would make (cached per cell)
   const key = `${Math.floor(p[0] / CELL)},${Math.floor(p[1] / CELL)}|${streetKey.length}`;
-  if (yardPreview.key !== key) yardPreview = { key, Y: yardCells(p, { blocks: S.blocks, roads: S.roads, free: yardFree }) };
+  if (yardPreview.key !== key) yardPreview = { key, Y: yardCells(p, { blocks: S.blocks, roads: S.roads, free: yardFree, field: field || blockField(S.blocks), prep: roadPrep }) };
   return yardPreview.Y;
 }
 function yardPress() {
@@ -604,7 +620,8 @@ function groundDab(p) { const b = ground.dab(p[0], p[1], ui.groundR, ui.groundKi
 
 
 // a second finger came after the tool had started: undo what the first one began
-function abortPress() {
+function abortPress() { abortInner(); if (streetsHeld) holdStreets(false); }
+function abortInner() {
   if (draft && draft.stage === "base") { draft = null; showPreview(); }
   else if (draft && draft.stage === "place" && draft.drag) { draft.box = draft.drag.box0; draft.drag = null; placeApply(); showPreview(); }
   else if (action) {
@@ -659,7 +676,8 @@ function press() {
   }
   else if (t === "trees") { action = { kind: "trees", before: snapshot(), changed: false, last: 0 }; if (plantAt(at)) { action.changed = true; trees.rebuild(S.trees, treeY); } }
 }
-function release() {
+function release() { releaseInner(); if (streetsHeld) holdStreets(false); }      // (the street layer, held during the drag, is made now)
+function releaseInner() {
   if (draft && draft.stage === "place" && draft.drag) {          // a click on the tier without dragging also goes on to floors
     const g = draft.drag; draft.drag = null; if (!g.moved) { startHeight(); updateDraft(); } showHover(); return;
   }
@@ -860,7 +878,7 @@ function wallAt(at) {
   const s = nearestOnPath(c.lay.Lp, b.closed, at.p).d < nearestOnPath(c.lay.Rp, b.closed, at.p).d ? 1 : -1;
   return out && nc.d > (b.D || 12) / 2 - 0.5 ? { mode: "width", n: out, s } : null;
 }
-function startPush(at, w) { action = { kind: w.mode, b: at.block, before: snapshot(), grab: at.p, y: at.y, n: w.n, s: w.s, end: w.end, D0: at.block.D || 12, pts0: at.block.pts.map((q) => [...q]), val: null }; }
+function startPush(at, w) { streetsHeld = true; action = { kind: w.mode, b: at.block, before: snapshot(), grab: at.p, y: at.y, n: w.n, s: w.s, end: w.end, D0: at.block.D || 12, pts0: at.block.pts.map((q) => [...q]), val: null }; }
 function resizeMove(a) {
   const cur = onPlane(a.y); if (!cur) return; const b = a.b, raw = V.dot(V.sub(cur, a.grab), a.n);
   let g = [];
@@ -971,5 +989,5 @@ export {
   pick, alignGrid, demolish, clearTown, photo, flash, setMods,
   scene, overlayRoot, town, rebuild, snapshot, pushUndo, applyState, tip, snapPoint, gridSnap, tolAt, screenOf, onPlane, randFin, selOverlay, OV, cellAt,
   addRoad, roadStart, roadEnd, showRoadGhost,
-  setSel, beginPush, beginPull, layOf, edit, ghost, undoMark, squashUndo, dropUndo, cellOnWall, showGuides,
+  holdStreets, setSel, beginPush, beginPull, layOf, edit, ghost, undoMark, squashUndo, dropUndo, cellOnWall, showGuides,
 };

@@ -6,8 +6,8 @@
 // their entrances face, joined to the nearest road; a playground where it is quietest; a kiosk where it meets a road.
 // The parked cars and lamps along the driveway, and the paths from the entrances, then come as for any road.
 import { V, rng, offsetPoly } from "./sandbox_blocks.js";
-import { onRoad, nearestOn, loopOf } from "./sandbox_streets.js";
-import { inBlock, PORCH } from "./sandbox_details.js";
+import { onRoads, prepRoads, nearestOn, loopOf } from "./sandbox_streets.js";
+import { blockField, PORCH } from "./sandbox_details.js";
 
 export const CELL = 2, REACH = 40, RADIUS = 120, DRIVE_W = 4, DRIVE_OFF = 9;
 const segDist = (p, a, b) => { const d = V.sub(b, a), L2 = V.dot(d, d) || 1e-9, t = Math.max(0, Math.min(1, V.dot(V.sub(p, a), d) / L2)); return { d: V.dist(p, V.add(a, V.mul(d, t))), q: V.add(a, V.mul(d, t)), t }; };
@@ -22,10 +22,11 @@ function blockDist(p, blocks) {                    // metres from p to the neare
 // not open ground near a block
 export function yardCells(p, ctx) {
   const { blocks = [], roads = [], free = () => true } = ctx, n = Math.ceil((2 * RADIUS) / CELL), x0 = p[0] - RADIUS, z0 = p[1] - RADIUS;
+  const F = ctx.field || blockField(blocks), prep = ctx.prep || prepRoads(roads), blockDist = (q) => F.dist(q);
   const centre = (i, j) => [x0 + (i + 0.5) * CELL, z0 + (j + 0.5) * CELL];
   const open = new Uint8Array(n * n), solid = new Uint8Array(n * n);   // 0 unknown, 1 yes, 2 no
-  const isOpen = (i, j) => { const k = j * n + i; if (!open[k]) { const q = centre(i, j), d = blockDist(q, blocks); solid[k] = d <= 0 ? 1 : 2; open[k] = d > 0.5 && d <= REACH && free(q) && !roads.some((o) => onRoad(q, o, roads, 0.5)) ? 1 : 2; } return open[k] === 1; };
-  const isSolid = (i, j) => { const k = j * n + i; if (!solid[k]) solid[k] = blockDist(centre(i, j), blocks) <= 0 ? 1 : 2; return solid[k] === 1; };
+  const isOpen = (i, j) => { const k = j * n + i; if (!open[k]) { const q = centre(i, j), d = blockDist(q); solid[k] = d <= 0 ? 1 : 2; open[k] = d > 0.5 && d <= REACH && free(q) && !onRoads(q, prep, 0.5) ? 1 : 2; } return open[k] === 1; };
+  const isSolid = (i, j) => { const k = j * n + i; if (!solid[k]) solid[k] = blockDist(centre(i, j)) <= 0 ? 1 : 2; return solid[k] === 1; };
   const si = Math.floor((p[0] - x0) / CELL), sj = Math.floor((p[1] - z0) / CELL);
   if (!isOpen(si, sj)) return null;
   const seen = (i, j) => {                        // no block between the tapped point and this cell
@@ -57,7 +58,8 @@ function edgeDist(Y) {
 // -> { roads: [driveways and their links to roads, { id, pts, w, yard: true }], items: props }
 export function yardLayout(Y, ctx) {
   const { id, seed, entrances = [], blocks = [], roads = [], free = () => true } = ctx, R = rng((seed >>> 0) || 1), out = [], items = [];
-  const clearLine = (a, b) => { const L = V.dist(a, b); for (let s = 0; s <= L; s += 1) { const q = V.lerp(a, b, s / (L || 1)); if (!free(q) || inBlock(q, blocks, 0.8)) return false; } return true; };
+  const F = ctx.field || blockField(blocks), prep = prepRoads(roads), blockDist = (q) => F.dist(q);
+  const clearLine = (a, b) => { const L = V.dist(a, b); for (let s = 0; s <= L; s += 1) { const q = V.lerp(a, b, s / (L || 1)); if (!free(q) || F.dist(q) < 0.8) return false; } return true; };
   // driveways: one along each wall whose entrances open into the yard, DRIVE_OFF m out from it (a curved or round
   // block: one that follows its curve)
   const groups = new Map(), curved = new Map(), byId = new Map(blocks.map((b) => [b.id, b]));
@@ -79,13 +81,13 @@ export function yardLayout(Y, ctx) {
     if (link) out.push({ id: 1e6 + id * 1000 + rid++, pts: [link.a, link.b], w: DRIVE_W, yard: true });
   };
   for (const [b, es] of curved) {
-    const d = curveDrive(b, es, Y, roads); if (!d) continue;
+    const d = curveDrive(b, es, Y, prep); if (!d) continue;
     const drive = { id: 1e6 + id * 1000 + rid++, pts: d.pts, w: DRIVE_W, yard: true, ...(d.closed ? { closed: true } : {}) }; out.push(drive); linkUp(drive);
   }
   for (const es of groups.values()) {
     const o = es[0].out, u = V.left(o), base = V.add(es[0].p, V.mul(o, DRIVE_OFF)), ss = es.map((e) => V.dot(V.sub(e.p, es[0].p), u));
     const s0 = Math.min(...ss) - 7, s1 = Math.max(...ss) + 7, inside = [];
-    for (let s = s0; s <= s1; s += 1) { const q = V.add(base, V.mul(u, s)); inside.push(Y.at(q) && !roads.some((r) => onRoad(q, r, roads, 0)) ? s : null); }
+    for (let s = s0; s <= s1; s += 1) { const q = V.add(base, V.mul(u, s)); inside.push(Y.at(q) && !onRoads(q, prep, 0) ? s : null); }
     let best = null, run = null;                 // the longest stretch of that line inside the yard
     for (const s of [...inside, null]) { if (s != null) { run = run ? [run[0], s] : [s, s]; } else if (run) { if (!best || run[1] - run[0] > best[1] - best[0]) best = run; run = null; } }
     if (!best || best[1] - best[0] < 10) continue;
@@ -97,7 +99,7 @@ export function yardLayout(Y, ctx) {
   const ed = edgeDist(Y); let best = null;
   for (let j = 0; j < Y.n; j++) for (let i = 0; i < Y.n; i++) {
     const k = j * Y.n + i; if (!Y.mask[k]) continue; const q = Y.centre(i, j);
-    let s = Math.min(ed[k], blockDist(q, blocks)); for (const r of allRoads) s = Math.min(s, nearestOn(loopOf(r), q).d - r.w / 2);
+    let s = Math.min(ed[k], blockDist(q)); for (const r of allRoads) s = Math.min(s, nearestOn(loopOf(r), q).d - r.w / 2);
     if (!best || s > best.s) best = { s, q };
   }
   if (best && best.s >= 7) {
@@ -116,7 +118,7 @@ export function yardLayout(Y, ctx) {
     const cands = [];
     for (let j = 0; j < Y.n; j++) for (let i = 0; i < Y.n; i++) {
       if (!Y.mask[j * Y.n + i]) continue; const q = Y.centre(i, j);
-      for (const r of roads) { const s = nearestOn(r.pts, q), e = s.d - r.w / 2, L = r.pts.slice(1).reduce((a, p, k) => a + V.dist(r.pts[k], p), 0); if (e > 2.2 && e < 4.5 && s.s > 0.1 * L && s.s < 0.9 * L && blockDist(q, blocks) > 4) cands.push({ q, back: V.norm(V.sub(q, s.q)) }); }
+      for (const r of roads) { const s = nearestOn(r.pts, q), e = s.d - r.w / 2, L = r.pts.slice(1).reduce((a, p, k) => a + V.dist(r.pts[k], p), 0); if (e > 2.2 && e < 4.5 && s.s > 0.1 * L && s.s < 0.9 * L && blockDist(q) > 4) cands.push({ q, back: V.norm(V.sub(q, s.q)) }); }
     }
     if (cands.length) { const c = cands[Math.floor(R() * cands.length)]; items.push({ name: ["kiosk_0", "kiosk_1", "kiosk_2"][Math.floor(R() * 3)], p: [c.q[0], 0, c.q[1]], a: [-c.back[1], c.back[0]], paint: [0, 0, 0], r: R() }); }
   }
@@ -127,13 +129,13 @@ export function yardLayout(Y, ctx) {
 // way round, when all of it is in the yard and off the roads; else (and along a curved block) from a little before its
 // first entrance to a little past its last, only where it is in the yard and not on a road.
 // -> { pts (about every 3 m), closed } or null
-function curveDrive(b, es, Y, roads) {
+function curveDrive(b, es, Y, prep) {
   const D = b.D || 12, path = b.closed ? [...b.pts, b.pts[0]] : b.pts, n0 = nearestOn(path, es[0].p), u = V.norm(V.sub(path[n0.i + 1], path[n0.i]));
   const side = V.dot(es[0].out, V.left(u)) > 0 ? 1 : -1, line = offsetPoly(b.pts, b.closed, side * (D / 2 + DRIVE_OFF)), loop = b.closed ? [...line, line[0]] : line;
   const smp = [];                                 // the line, a point every metre
   for (let i = 0; i + 1 < loop.length; i++) { const a = loop[i], c = loop[i + 1], L = V.dist(a, c), k = Math.max(1, Math.round(L)); for (let j = 0; j < k; j++) smp.push(V.lerp(a, c, j / k)); }
   if (!b.closed) smp.push(loop[loop.length - 1]);
-  const N = smp.length, ok = smp.map((q) => Y.at(q) && !roads.some((r) => onRoad(q, r, roads, 0)));
+  const N = smp.length, ok = smp.map((q) => Y.at(q) && !onRoads(q, prep, 0));
   const thin = (run) => { const pts = run.filter((_, i) => i % 3 === 0); if (pts[pts.length - 1] !== run[run.length - 1]) pts.push(run[run.length - 1]); return pts; };
   if (b.closed && ok.every(Boolean)) return { pts: smp.filter((_, i) => i % 3 === 0), closed: true };
   const near = (p) => { let bi = 0, bd = Infinity; smp.forEach((q, i) => { const d = V.dist(q, p); if (d < bd) { bd = d; bi = i; } }); return bi; };

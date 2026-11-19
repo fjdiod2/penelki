@@ -2,7 +2,7 @@
 // at each entrance a concrete path (on to the nearest road when there is one in front), benches, a bin, sometimes a lamp;
 // satellite dishes here and there on the facades; antennas on the roofs. All seeded, so a block keeps the same ones.
 import { V, rng } from "./sandbox_blocks.js";
-import { onRoad, KERB } from "./sandbox_streets.js";
+import { onRoads, prepRoads, KERB } from "./sandbox_streets.js";
 
 export const PORCH = 2.6;                          // how far an entrance porch (with its steps) stands out from the wall
 export const PATH_W = 1.6;                         // a concrete path's width
@@ -11,22 +11,43 @@ const segDist = (p, a, b) => { const d = V.sub(b, a), L2 = V.dot(d, d) || 1e-9, 
 export function inBlock(p, blocks, margin = 0) {   // inside a ground block's footprint (plus margin)?
   return blocks.some((b) => { if (b.parent || b.at) return false; const n = b.pts.length; let m = Infinity; for (let i = 0; i < (b.closed ? n : n - 1); i++) m = Math.min(m, segDist(p, b.pts[i], b.pts[(i + 1) % n])); return m < (b.D || 12) / 2 + margin; });
 }
+// For many questions about the same blocks: the ground blocks' walls in chunks of 16 segments, each in a box, so the
+// distance from a point to the nearest wall skips the far ones. -> { dist(p): metres to the nearest wall (- inside) }
+export function blockField(blocks) {
+  const chunks = [];
+  for (const b of blocks) {
+    if (b.parent || b.at) continue; const n = b.pts.length, m = b.closed ? n : n - 1, h = (b.D || 12) / 2;
+    for (let i0 = 0; i0 < m; i0 += 16) {
+      const segs = []; for (let i = i0; i < Math.min(m, i0 + 16); i++) segs.push([b.pts[i], b.pts[(i + 1) % n]]);
+      const xs = segs.flat().map((q) => q[0]), zs = segs.flat().map((q) => q[1]); chunks.push({ segs, h, box: [Math.min(...xs), Math.min(...zs), Math.max(...xs), Math.max(...zs)] });
+    }
+  }
+  return { dist(p) {
+    let best = Infinity;
+    for (const c of chunks) {
+      const dx = Math.max(c.box[0] - p[0], 0, p[0] - c.box[2]), dz = Math.max(c.box[1] - p[1], 0, p[1] - c.box[3]);
+      if (Math.hypot(dx, dz) - c.h >= best) continue;
+      for (const [a, q] of c.segs) best = Math.min(best, segDist(p, a, q) - c.h);
+    }
+    return best;
+  } };
+}
 
 // ---- entrances. es: [{ p: the door on the plan (the wall line), out: unit vector away from the wall, seed }]
 // ctx: { roads, blocks, free(p) }. -> { items: props as in sandbox_streets, paths: [{ a, b, w }] }
 // The path runs straight out from the porch: up to the edge of a road if one lies within 40 m in front, else 7 m.
 // Benches face the path from one or both sides a few metres out, a bin by one of them, sometimes a small lamp.
 export function entranceDetails(es, ctx) {
-  const { roads = [], blocks = [], free = () => true } = ctx, items = [], paths = [];
-  const clear = (p, m) => free(p) && !inBlock(p, blocks, m) && !roads.some((o) => onRoad(p, o, roads, m));
+  const { roads = [], blocks = [], free = () => true } = ctx, items = [], paths = [], F = ctx.field || blockField(blocks), prep = ctx.prep || prepRoads(roads);
+  const clear = (p, m) => free(p) && F.dist(p) >= m && !onRoads(p, prep, m);
   for (const e of es) {
     const R = rng(e.seed >>> 0 || 1), out = V.norm(e.out), side = V.left(out), a = V.add(e.p, V.mul(out, PORCH));
     if (!clear(a, 0)) continue;
     let len = 7, toRoad = false;
     for (let t = 0.5; t <= 40; t += 0.5) {         // up to the first road in front (its kerb), or until something is in the way
       const q = V.add(a, V.mul(out, t));
-      if (roads.some((o) => onRoad(q, o, roads, KERB.w))) { len = t; toRoad = true; break; }
-      if (!free(q) || inBlock(q, blocks, 0.3)) { len = Math.min(len, t - 0.5); break; }
+      if (onRoads(q, prep, KERB.w)) { len = t; toRoad = true; break; }
+      if (!free(q) || F.dist(q) < 0.3) { len = Math.min(len, t - 0.5); break; }
       if (t > 7 && !roads.length) break;
     }
     if (!toRoad) len = Math.min(len, 7);

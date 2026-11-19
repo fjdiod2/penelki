@@ -10,7 +10,7 @@
   body.touch #touchbar { display: flex; }
   #touchbar button { width: 58px; height: 58px; border-radius: 50%; border: 1px solid var(--line); background: var(--panel); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); color: var(--text); font-size: 12px; box-shadow: 0 4px 16px rgba(0,0,0,.2); }
   #touchbar #t-done { background: rgba(255, 215, 94, .9); color: #222; font-weight: 600; }
-  #touchbar #t-orbit.on { background: rgba(122, 216, 255, .85); color: #111; }
+  #touchbar #t-del { color: #ffb3a8; }
   button { font: inherit; color: inherit; cursor: pointer; }
   .panel { background: var(--panel); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 6px 24px rgba(0,0,0,.18); }
   #title { position: fixed; left: 16px; top: 14px; padding: 8px 14px; display: flex; gap: 10px; align-items: baseline; }
@@ -46,8 +46,11 @@
   #flash.show { opacity: 1; transform: translate(-50%, 0); }
   body.clean #title, body.clean #topright, body.clean #dock, body.clean #stats, body.clean #help, body.clean #tip { display: none !important; }
   body.clean #touchbar { display: none !important; }
+  #bar.more-r, #sub.more-r { -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 44px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 44px), transparent); }
+  #bar.more-l, #sub.more-l { -webkit-mask-image: linear-gradient(90deg, transparent, #000 44px); mask-image: linear-gradient(90deg, transparent, #000 44px); }
+  #bar.more-l.more-r, #sub.more-l.more-r { -webkit-mask-image: linear-gradient(90deg, transparent, #000 44px, #000 calc(100% - 44px), transparent); mask-image: linear-gradient(90deg, transparent, #000 44px, #000 calc(100% - 44px), transparent); }
   @media (max-width: 640px) {
-    .tool { width: 50px; height: 50px; } .tool span { font-size: 10px; } .tool svg { width: 21px; height: 21px; } .tool kbd { display: none; }
+    .tool { width: 54px; height: 50px; } #bar { scroll-snap-type: x proximity; } .tool { scroll-snap-align: start; } .tool span { font-size: 10px; } .tool svg { width: 21px; height: 21px; } .tool kbd { display: none; }
     #title span { display: none; } #title { padding: 6px 10px; } #topright { top: 10px; right: 10px; } #topright button { padding: 6px 7px; font-size: 12px; } #title { top: 10px; left: 10px; }
     #stats { display: none; } #hint { font-size: 11px; padding: 2px 10px; }
     #dock { bottom: calc(8px + env(safe-area-inset-bottom)); gap: 6px; }
@@ -63,7 +66,7 @@
 <div id="topright" class="panel"><button id="undo" title="Undo (Ctrl/⌘ Z)">Undo</button><button id="redo" title="Redo (Ctrl/⌘ Shift Z)">Redo</button><button id="photo" title="Save a picture (P)">Photo</button><button id="new" title="Start over (undoable)">New</button></div>
 <div id="stats"></div>
 <div id="help" class="panel">
-  <p><b>On a phone</b> one finger uses the tool · two fingers: pinch to zoom, drag to slide, twist to turn · <i>Orbit</i> makes one finger turn and tilt the camera · after drawing a block drag up or down for floors and tap (or <i>Done</i>) to build</p>
+  <p><b>On a phone</b> drag one finger to move around · two fingers: pinch to zoom, twist to turn, move both up or down to tilt · <b>Block</b>: tap the ground for a block, tap a block to select it, then drag its arrows (walls, floors) or the blue tabs on its roof (step back); tap its roof to build on top · <b>Extrude</b>: tap a panel, tap another for a rectangle, drag the arrow · Trees and Land paint with one finger</p>
   <p><b>Camera</b> right-drag to turn · middle-drag or <kbd>Shift</kbd>+right-drag to slide · wheel to zoom · <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move · <kbd>Q</kbd><kbd>E</kbd> turn</p>
   <p><b>Build</b> drag along the first wall, then swing the mouse out sideways to make the block wider; release, move up for floors and click. Start on a roof to build on top.</p>
   <p><b>Push and pull</b> drag any wall: only that wall moves, out or in; drag an end wall to lengthen or shorten. With Floors (<kbd>4</kbd>), drag a roof up or down.</p>
@@ -74,7 +77,7 @@
   <p>Your town is saved in this browser automatically.</p>
 </div>
 <div id="dock"><div id="hint"></div><div id="sub" class="panel"></div><div id="bar" class="panel"></div></div>
-<div id="touchbar"><button id="t-done">Done</button><button id="t-cancel">Cancel</button><button id="t-orbit" title="One finger turns the camera">Orbit</button></div>
+<div id="touchbar"><button id="t-done" style="display:none">Done</button><button id="t-cancel" style="display:none">Cancel</button><button id="t-del" style="display:none">Delete</button></div>
 <div id="tip" style="display:none"></div><div id="flash" class="panel"></div>
 <script type="module" src="./sandbox.js"></script>
 </body></html>

@@ -1,5 +1,5 @@
 // Панельки, the interface both inputs share: the tool bar, the options row under it, and the buttons at the top.
-import { ui, grid, LAND, kit, cursor as mouse, cancel, showHover, scheduleSave, undo, redo, photo, flash, clearTown, on } from "./sandbox_core.js";
+import { ui, grid, LAND, kit, now, cursor as mouse, cancel, showHover, scheduleSave, undo, redo, photo, flash, clearTown, on } from "./sandbox_core.js";
 
 export const TOOLS = [  { id: "line", key: "1", name: "Block", hint: "Drag a wall, swing out to widen · drag any wall to push or pull it · drag a roof edge inward to step back" },
   { id: "curve", key: "2", name: "Curve", hint: "Drag from end to end, then move to bend it and click" },
@@ -11,6 +11,13 @@ export const TOOLS = [  { id: "line", key: "1", name: "Block", hint: "Drag a wal
   { id: "ground", key: "7", name: "Land", hint: "Paint water, bog, reeds, fields and paths · Grass rubs them out" },
   { id: "erase", key: "8", name: "Demolish", hint: "Click a block to knock it down (and everything standing on it)" },
 ];
+const TOUCH_HINT = {
+  line: "Tap the ground for a block · tap a block, then drag its arrows · tap its roof to build on top",
+  curve: "Drag from end to end, then drag to bend it and tap", floors: "Drag a roof up or down for floors",
+  carve: "Tap a panel, tap another for a rectangle · then drag the arrow", paint: "Tap blocks to repaint them",
+  trees: "Paint trees with one finger · two fingers move the view", ground: "Paint with one finger · two fingers move the view",
+  erase: "Tap a block to knock it down",
+};
 const isBuild = (t) => t === "line" || t === "curve" || t === "ring";
 const $ = (s) => document.querySelector(s);
 const ICONS = {
@@ -39,7 +46,7 @@ export function renderSub() {
   else if (t === "carve") h = chip("carve", "out", '<i class="sw dice">⊞</i>Build out', ui.carve === "out") + chip("carve", "dig", '<i class="sw dice">⊟</i>Dig', ui.carve === "dig");
   else if (t === "ground") h = LAND.map(([k, l, , , c]) => chip("groundKind", k, `<i class="sw" style="background:${c}"></i>${l}`, ui.groundKind === k)).join("") + slider("groundR", 1, 40);
   $("#sub").innerHTML = h; $("#sub").style.display = h ? "" : "none";
-  $("#hint").textContent = TOOLS.find((x) => x.id === t).hint;
+  const tool = TOOLS.find((x) => x.id === t); $("#hint").textContent = (now.input === "touch" && TOUCH_HINT[t]) || tool.hint;
 }
 $("#sub").addEventListener("click", (e) => { if (e.target.closest("[data-act=grid]")) { grid.on = !grid.on; renderSub(); scheduleSave(); return; }
   if (e.target.closest("[data-act=free]")) { ui.free = !ui.free; mouse.alt = ui.free; renderSub(); return; }

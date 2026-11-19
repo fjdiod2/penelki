@@ -1,355 +1,211 @@
 [
  {
-  "step": "drawn",
-  "st": {
-   "blocks": [],
-   "draft": [
-    "height",
-    1
-   ],
-   "cam": [
-    30,
-    120,
-    110
-   ],
-   "tgt": [
-    0,
-    0,
-    0
-   ]
+  "step": "start",
+  "hint": "Tap the ground for a block \u00b7 tap a block, then drag its arrows \u00b7 tap its roof to build on top",
+  "orbit_button": false
+ },
+ {
+  "step": "one finger slides the view",
+  "moved": true,
+  "same_angle": true,
+  "blocks": 0
+ },
+ {
+  "step": "pinch out zooms in",
+  "closer": true
+ },
+ {
+  "step": "twist turns",
+  "turned": true
+ },
+ {
+  "step": "two fingers up tilt toward the horizon",
+  "tilt": [
+   45,
+   78
+  ],
+  "tilted": true,
+  "dist_same": true
+ },
+ {
+  "step": "tap places a block",
+  "blocks": [
+   {
+    "id": 1,
+    "fl": 5,
+    "D": 12,
+    "L": 25.6,
+    "parent": null,
+    "at": null
+   }
+  ],
+  "selected": 1,
+  "buttons": {
+   "t-done": true,
+   "t-del": true,
+   "t-cancel": false
   },
-  "tip": "1 floor | drag up or down \u00b7 tap to build",
-  "buttons": [
-   true,
-   true,
-   true
+  "handles": [
+   "floors",
+   "pushlength",
+   "pushlength",
+   "pushwidth",
+   "stepend",
+   "stepend",
+   "stepside"
   ]
  },
  {
-  "step": "dragged up",
-  "st": {
-   "blocks": [],
-   "draft": [
-    "height",
-    14
-   ],
-   "cam": [
-    30,
-    120,
-    110
-   ],
-   "tgt": [
-    0,
-    0,
-    0
-   ]
-  },
-  "tip": "14 floors | drag up or down \u00b7 tap to build"
- },
- {
-  "step": "tap builds",
-  "st": {
-   "blocks": [
-    [
-     14,
-     15,
-     2
-    ]
-   ],
-   "draft": null,
-   "cam": [
-    30,
-    120,
-    110
-   ],
-   "tgt": [
-    0,
-    0,
-    0
-   ]
-  }
- },
- {
-  "step": "pinch",
-  "st": {
-   "blocks": [
-    [
-     14,
-     15,
-     2
-    ]
-   ],
-   "draft": null,
-   "cam": [
-    13,
-    51,
-    47
-   ],
-   "tgt": [
-    -0.0,
-    0,
-    0
-   ]
-  }
- },
- {
-  "step": "twist",
-  "st": {
-   "blocks": [
-    [
-     14,
-     15,
-     2
-    ]
-   ],
-   "draft": null,
-   "cam": [
-    40,
-    51,
-    28
-   ],
-   "tgt": [
-    -0.0,
-    0,
-    0
-   ]
-  }
- },
- {
-  "step": "slide",
-  "st": {
-   "blocks": [
-    [
-     14,
-     15,
-     2
-    ]
-   ],
-   "draft": null,
-   "cam": [
-    37,
-    51,
-    33
-   ],
-   "tgt": [
-    -4,
-    0,
-    5
-   ]
-  }
- },
- {
-  "step": "orbit",
-  "st": {
-   "blocks": [
-    [
-     14,
-     15,
-     2
-    ]
-   ],
-   "draft": null,
-   "cam": [
-    24,
-    38,
-    58
-   ],
-   "tgt": [
-    -4,
-    0,
-    5
-   ]
-  },
-  "buttons": [
-   false,
-   false,
-   true
+  "step": "floors arrow up",
+  "blocks": [
+   {
+    "id": 1,
+    "fl": 12,
+    "D": 12,
+    "L": 25.6,
+    "parent": null,
+    "at": null
+   }
   ]
  },
  {
-  "step": "step back",
-  "st": {
-   "blocks": [
-    [
-     14,
-     15,
-     2
-    ]
-   ],
-   "draft": [
-    "place",
-    1
-   ],
-   "cam": [
-    30,
-    120,
-    110
-   ],
-   "tgt": [
-    0,
-    0,
-    0
-   ]
+  "step": "push a wall out",
+  "blocks": [
+   {
+    "id": 1,
+    "fl": 12,
+    "D": 21,
+    "L": 25.6,
+    "parent": null,
+    "at": null
+   }
+  ]
+ },
+ {
+  "step": "step back from an end",
+  "blocks": [
+   {
+    "id": 1,
+    "fl": 12,
+    "D": 21,
+    "L": 25.6,
+    "parent": null,
+    "at": null
+   },
+   {
+    "id": 2,
+    "fl": 3,
+    "D": 21,
+    "L": 16,
+    "parent": 1,
+    "at": null
+   }
+  ],
+  "selected": 2
+ },
+ {
+  "step": "Delete removes the selected tier",
+  "blocks": [
+   {
+    "id": 1,
+    "fl": 12,
+    "D": 21,
+    "L": 25.6,
+    "parent": null,
+    "at": null
+   }
+  ],
+  "buttons": {
+   "t-done": false,
+   "t-del": false,
+   "t-cancel": false
+  }
+ },
+ {
+  "step": "tap the block again: selected",
+  "selected": 1
+ },
+ {
+  "step": "tap its roof: a block on top",
+  "blocks": [
+   {
+    "id": 1,
+    "fl": 12,
+    "D": 21,
+    "L": 25.6,
+    "parent": null,
+    "at": null
+   },
+   {
+    "id": 3,
+    "fl": 3,
+    "D": 12,
+    "L": 12.8,
+    "parent": 1,
+    "at": null
+   }
+  ]
+ },
+ {
+  "step": "tap away: let go",
+  "selected": null,
+  "buttons": {
+   "t-done": false,
+   "t-del": false,
+   "t-cancel": false
+  }
+ },
+ {
+  "step": "tap two panels",
+  "tip": "3 \u00d7 2 panels | drag the arrow out to build",
+  "buttons": {
+   "t-done": false,
+   "t-del": false,
+   "t-cancel": true
   },
-  "tip": "6 sections \u00d7 15 m | drag its walls or slide it \u00b7 tap beside it for floors",
-  "buttons": [
-   true,
-   true,
-   true
+  "handles": [
+   "pull"
   ]
  },
  {
-  "step": "tier built with Done",
-  "st": {
-   "blocks": [
-    [
-     14,
-     15,
-     2
-    ],
-    [
-     6,
-     15,
-     2
-    ]
-   ],
-   "draft": null,
-   "cam": [
-    30,
-    120,
-    110
-   ],
-   "tgt": [
-    0,
-    0,
-    0
-   ]
-  }
- },
- {
-  "step": "carve select",
-  "tip": "",
-  "buttons": [
-   false,
-   true,
-   true
+  "step": "drag the arrow out",
+  "blocks": [
+   {
+    "id": 1,
+    "fl": 12,
+    "D": 21,
+    "L": 25.6,
+    "parent": null,
+    "at": null
+   },
+   {
+    "id": 3,
+    "fl": 3,
+    "D": 12,
+    "L": 12.8,
+    "parent": 1,
+    "at": null
+   },
+   {
+    "id": 4,
+    "fl": 2,
+    "D": 8,
+    "L": 9.6,
+    "parent": null,
+    "at": {
+     "id": 1,
+     "f": 1
+    }
+   }
   ]
  },
  {
-  "step": "carve out",
-  "st": {
-   "blocks": [
-    [
-     14,
-     15,
-     2
-    ],
-    [
-     6,
-     15,
-     2
-    ],
-    [
-     2,
-     8,
-     2
-    ]
-   ],
-   "draft": null,
-   "cam": [
-    0,
-    20,
-    60
-   ],
-   "tgt": [
-    0,
-    12,
-    0
-   ]
-  }
- },
- {
-  "step": "trees",
+  "step": "trees with one finger",
   "some": true
  },
  {
-  "step": "drawn 2",
-  "st": {
-   "blocks": [
-    [
-     14,
-     15,
-     2
-    ],
-    [
-     6,
-     15,
-     2
-    ],
-    [
-     2,
-     8,
-     2
-    ]
-   ],
-   "draft": [
-    "height",
-    1
-   ],
-   "cam": [
-    30,
-    120,
-    110
-   ],
-   "tgt": [
-    0,
-    0,
-    0
-   ]
-  },
-  "buttons": [
-   true,
-   true,
-   true
-  ]
- },
- {
-  "step": "cancel",
-  "st": {
-   "blocks": [
-    [
-     14,
-     15,
-     2
-    ],
-    [
-     6,
-     15,
-     2
-    ],
-    [
-     2,
-     8,
-     2
-    ]
-   ],
-   "draft": null,
-   "cam": [
-    30,
-    120,
-    110
-   ],
-   "tgt": [
-    0,
-    0,
-    0
-   ]
-  },
-  "buttons": [
-   false,
-   false,
-   true
-  ]
+  "step": "tool bar scrolls",
+  "fade": "panel more-l"
  },
  {
   "step": "errors",

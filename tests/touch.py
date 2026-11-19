@@ -1,6 +1,9 @@
-"""Touch regression test (a phone-sized page, fingers sent through CDP). Same use as desktop.py:
+"""Touch regression test: a phone-sized page, fingers sent through CDP. Same use as desktop.py:
 
     python3 tests/touch.py record | check
+
+Camera gestures (one-finger slide, pinch, twist, tilt), tap to place a block, its handles (floors, push a wall, step
+back), Delete, building on a roof, Extrude by tapping panels, a tree brush stroke.
 """
 import sys, os, json, time, math
 from playwright.sync_api import sync_playwright
@@ -13,56 +16,72 @@ MODE = sys.argv[1] if len(sys.argv) > 1 else "check"
 def run():
     port = serve(); trace = []; errs = []
     with sync_playwright() as p:
-        b = chromium(p); ctx = b.new_context(viewport={"width": 390, "height": 844}, device_scale_factor=3, is_mobile=True, has_touch=True)
+        b = chromium(p); ctx = b.new_context(viewport={"width": 390, "height": 844}, device_scale_factor=2, is_mobile=True, has_touch=True)
         ctx.add_init_script(SEED); pg = ctx.new_page()
-        pg.on("pageerror", lambda e: errs.append("PAGEERROR " + str(e))); pg.on("console", lambda m: errs.append(m.text) if m.type == "error" else None)
-        pg.goto(f"http://127.0.0.1:{port}/index.html?fresh"); pg.wait_for_function("window.__ready", timeout=60000); time.sleep(1.5)
+        pg.on("pageerror", lambda e: errs.append("PAGEERROR " + str(e))); pg.on("console", lambda m: errs.append(m.text) if m.type == "error" and "GL Driver" not in m.text else None)
+        pg.goto(f"http://127.0.0.1:{port}/index.html?fresh"); pg.wait_for_function("window.__ready", timeout=60000); time.sleep(1)
         cdp = ctx.new_cdp_session(pg)
         def touch(kind, pts): cdp.send("Input.dispatchTouchEvent", {"type": kind, "touchPoints": [{"x": x, "y": y, "id": i} for i, (x, y) in enumerate(pts)]})
-        def drag1(path, steps=10, hold=0.0):
-            touch("touchStart", [path[0]]); time.sleep(hold); a = path[0]
-            for c in path[1:]:
-                for i in range(1, steps + 1): touch("touchMove", [(a[0] + (c[0] - a[0]) * i / steps, a[1] + (c[1] - a[1]) * i / steps)]); time.sleep(0.016)
-                a = c
-            touch("touchEnd", []); time.sleep(0.2)
+        def drag1(a, c, steps=12, hold=0.0):
+            touch("touchStart", [a]); time.sleep(hold)
+            for i in range(1, steps + 1): touch("touchMove", [(a[0] + (c[0] - a[0]) * i / steps, a[1] + (c[1] - a[1]) * i / steps)]); time.sleep(0.016)
+            touch("touchEnd", []); time.sleep(0.25)
         def tap(x, y): touch("touchStart", [(x, y)]); time.sleep(0.05); touch("touchEnd", []); time.sleep(0.3)
-        def two(f):                                   # two fingers, positions from f(i), i = 0..10
+        def two(f):
             touch("touchStart", f(0))
-            for i in range(1, 11): touch("touchMove", f(i)); time.sleep(0.016)
+            for i in range(1, 13): touch("touchMove", f(i)); time.sleep(0.016)
             touch("touchEnd", []); time.sleep(0.2)
-        def cam(pos, tgt): pg.evaluate("([p,t]) => { const s = window.__sandbox, c = s.controls; c.enableDamping = false; c.update(); s.camera.position.set(...p); c.target.set(...t); c.update(); c.enableDamping = true; }", [pos, tgt])   # no leftover orbit momentum; time.sleep(0.3)
+        def cam(pos, tgt): pg.evaluate("([p,t]) => { const s = window.__sandbox, c = s.controls; c.enableDamping = false; c.update(); s.camera.position.set(...p); c.target.set(...t); c.update(); c.enableDamping = true; }", [pos, tgt]); time.sleep(0.3)
         scr = lambda x, y, z: pg.evaluate("([x,y,z]) => { const c = window.__sandbox.camera; c.updateMatrixWorld(); const v = c.position.clone().set(x,y,z).project(c); return [(v.x+1)/2*innerWidth, (1-v.y)/2*innerHeight]; }", [x, y, z])
-        st = lambda: pg.evaluate("(() => { const s = window.__sandbox, d = s.D(); return { blocks: s.S().blocks.map(b => [b.fl, +b.D.toFixed(1), b.pts.length]), draft: d && [d.stage, d.fl], cam: s.camera.position.toArray().map(v => Math.round(v)), tgt: s.controls.target.toArray().map(v => Math.round(v)) }; })()")
+        camst = lambda: pg.evaluate("(() => { const s = window.__sandbox, o = s.camera.position.clone().sub(s.controls.target); return { dist: Math.round(o.length()), tilt: Math.round(Math.acos(o.y / o.length()) * 180 / Math.PI), turn: Math.round(Math.atan2(o.x, o.z) * 180 / Math.PI), tgt: s.controls.target.toArray().map(Math.round) }; })()")
+        blocks = lambda: pg.evaluate("window.__sandbox.S().blocks.map(b => ({ id: b.id, fl: b.fl, D: +(b.D || 12).toFixed(1), L: +Math.hypot(b.pts[1][0]-b.pts[0][0], b.pts[1][1]-b.pts[0][1]).toFixed(1), parent: b.parent, at: b.at || null }))")
+        handles = lambda: pg.evaluate("window.__touch.handles()")
+        H = lambda kind, **kw: next(h for h in handles() if h["kind"] == kind and all(h.get(k) == v for k, v in kw.items()))
         tip = lambda: pg.inner_text("#tip").replace("\n", " | ") if pg.is_visible("#tip") else ""
-        vis = lambda: [pg.is_visible(s) for s in ("#t-done", "#t-cancel", "#t-orbit")]
+        vis = lambda: {s: pg.is_visible("#" + s) for s in ("t-done", "t-del", "t-cancel")}
         def log(step, **kw): trace.append({"step": step, **kw}); print(step, kw)
 
-        cam([30, 120, 110], [0, 0, 0]); pg.click("[data-g=fin][data-v=tiles_beige]")
-        drag1([scr(-20, 0, 0), scr(20, 0, 0), scr(20, 0, -16)]); log("drawn", st=st(), tip=tip(), buttons=vis())
-        drag1([(200, 600), (200, 450)]); log("dragged up", st=st(), tip=tip())
-        tap(200, 450); log("tap builds", st=st())
-        two(lambda i: [(150 - 6 * i, 400), (240 + 6 * i, 400)]); log("pinch", st=st())
-        two(lambda i: [(195 - 45 * math.cos(math.radians(4 * i)), 400 - 45 * math.sin(math.radians(4 * i))), (195 + 45 * math.cos(math.radians(4 * i)), 400 + 45 * math.sin(math.radians(4 * i)))]); log("twist", st=st())
-        two(lambda i: [(150 + 8 * i, 400), (240 + 8 * i, 400)]); log("slide", st=st())
-        pg.tap("#t-orbit"); time.sleep(0.2); drag1([(200, 500), (260, 460)]); log("orbit", st=st(), buttons=vis()); pg.tap("#t-orbit"); time.sleep(0.2)
-        cam([30, 120, 110], [0, 0, 0])
-        g = pg.evaluate("(() => { const s = window.__sandbox, b = s.S().blocks[0]; return { top: s.topOf(b), a: b.pts[0], c: b.pts[1] }; })()")
-        m = [(g["a"][0] + g["c"][0]) / 2, (g["a"][1] + g["c"][1]) / 2]
-        drag1([scr(g["c"][0] - 1.5, g["top"], m[1]), scr(g["c"][0] - 20, g["top"], m[1])]); log("step back", st=st(), tip=tip(), buttons=vis())
-        pg.tap("#t-done"); time.sleep(0.2); drag1([(200, 500), (200, 420)]); pg.tap("#t-done"); time.sleep(0.3); log("tier built with Done", st=st())
-        pg.tap("[data-tool=carve]"); time.sleep(0.2); cam([0, 20, 60], [0, 12, 0])
-        drag1([scr(-8, 6, -1.99), scr(-2, 9, -1.99)]); log("carve select", tip=tip(), buttons=vis())
-        drag1([scr(-5, 7.5, -1.99), scr(-5, 7.5, 8)]); log("carve out", st=st())
-        pg.tap("[data-tool=trees]"); time.sleep(0.2); cam([30, 120, 110], [0, 0, 0])
-        drag1([(120, 650), (300, 650)], hold=0.3); log("trees", some=pg.evaluate("window.__sandbox.S().trees.length > 3"))
-        pg.tap("[data-tool=line]"); time.sleep(0.2); drag1([scr(-20, 0, 40), scr(20, 0, 40)]); log("drawn 2", st=st(), buttons=vis())
-        pg.tap("#t-cancel"); time.sleep(0.2); log("cancel", st=st(), buttons=vis())
+        cam([0, 90, 90], [0, 0, 0]); pg.click("[data-g=fin][data-v=tiles_beige]")
+        log("start", hint=pg.inner_text("#hint"), orbit_button=pg.is_visible("#t-orbit"))
+        # ---- camera
+        c0 = camst(); drag1((200, 500), (120, 420)); c1 = camst(); log("one finger slides the view", moved=c1["tgt"] != c0["tgt"], same_angle=c1["tilt"] == c0["tilt"] and c1["turn"] == c0["turn"], blocks=len(blocks()))
+        two(lambda i: [(140 - 5 * i, 450), (250 + 5 * i, 450)]); c2 = camst(); log("pinch out zooms in", closer=c2["dist"] < c1["dist"])
+        two(lambda i: [(195 - 60 * math.cos(math.radians(3 * i)), 450 - 60 * math.sin(math.radians(3 * i))), (195 + 60 * math.cos(math.radians(3 * i)), 450 + 60 * math.sin(math.radians(3 * i)))]); c3 = camst(); log("twist turns", turned=c3["turn"] != c2["turn"])
+        two(lambda i: [(140, 500 - 8 * i), (250, 500 - 8 * i)]); c4 = camst(); log("two fingers up tilt toward the horizon", tilt=[c3["tilt"], c4["tilt"]], tilted=c4["tilt"] > c3["tilt"], dist_same=abs(c4["dist"] - c3["dist"]) <= 1)
+        # ---- tap to place, handles
+        cam([0, 90, 90], [0, 0, 0])
+        tap(*scr(0, 0, 0)); log("tap places a block", blocks=blocks(), selected=pg.evaluate("window.__touch.selected()"), buttons=vis(), handles=sorted(h["kind"] + str(h.get("mode") or "") for h in handles()))
+        pg.screenshot(path=os.path.join(HERE, "out", "touch_selected.png"))
+        f = H("floors")["at"]; drag1(f, (f[0], f[1] - 120)); log("floors arrow up", blocks=blocks())
+        w = H("push", mode="width", s=1)["at"]; w2 = H("push", mode="width", s=-1)["at"]; d = [w[0] - w2[0], w[1] - w2[1]]; n = math.hypot(*d)
+        drag1(w, (w[0] + d[0] / n * 40, w[1] + d[1] / n * 40)); log("push a wall out", blocks=blocks())
+        e = H("step", mode="end", k=1)["at"]; e0 = H("step", mode="end", k=0)["at"]
+        drag1(e, (e[0] + (e0[0] - e[0]) * 0.45, e[1] + (e0[1] - e[1]) * 0.45)); log("step back from an end", blocks=blocks(), selected=pg.evaluate("window.__touch.selected()"))
+        pg.tap("#t-del"); time.sleep(0.3); log("Delete removes the selected tier", blocks=blocks(), buttons=vis())
+        tap(*scr(0, 0, 0)); log("tap the block again: selected", selected=pg.evaluate("window.__touch.selected()"))
+        top = pg.evaluate("window.__sandbox.topOf(window.__sandbox.S().blocks[0])"); tap(*scr(5, top, 0)); log("tap its roof: a block on top", blocks=blocks())
+        tap(*scr(-8, 0, 32)); log("tap away: let go", selected=pg.evaluate("window.__touch.selected()"), buttons=vis())
+        # ---- extrude
+        pg.tap("[data-tool=carve]"); time.sleep(0.2); cam([10, 20, 60], [0, 8, 0]); b1 = pg.evaluate("window.__sandbox.S().blocks[0]")
+        zf = max(b1["pts"][0][1], b1["pts"][1][1]) + b1["D"] / 2 + 0.01 if False else None
+        front = pg.evaluate("(() => { const b = window.__sandbox.S().blocks[0], u = [b.pts[1][0]-b.pts[0][0], b.pts[1][1]-b.pts[0][1]], L = Math.hypot(...u); const lf = [u[1]/L, -u[0]/L], s = lf[1] > 0 ? 1 : -1; return { o: [b.pts[0][0] + lf[0]*s*b.D/2, b.pts[0][1] + lf[1]*s*b.D/2], u: [u[0]/L, u[1]/L], n: [lf[0]*s, lf[1]*s] }; })()")
+        P = lambda t, y: scr(front["o"][0] + front["u"][0] * t + front["n"][0] * 0.02, y, front["o"][1] + front["u"][1] * t + front["n"][1] * 0.02)
+        tap(*P(4.8, 0.8 + 2.8 * 1.5)); tap(*P(11.2, 0.8 + 2.8 * 2.5)); log("tap two panels", tip=tip(), buttons=vis(), handles=[h["kind"] for h in handles()])
+        pg.screenshot(path=os.path.join(HERE, "out", "touch_carve.png"))
+        a = H("pull")["at"]; q = scr(front["o"][0] + front["u"][0] * 8 + front["n"][0] * 9, 0.8 + 2.8 * 2, front["o"][1] + front["u"][1] * 8 + front["n"][1] * 9)
+        drag1(a, q); log("drag the arrow out", blocks=blocks())
+        # ---- a brush
+        pg.tap("[data-tool=trees]"); time.sleep(0.2); cam([0, 90, 90], [0, 0, 0])
+        drag1(scr(-12, 0, 36), scr(12, 0, 36), steps=20, hold=0.3); log("trees with one finger", some=pg.evaluate("window.__sandbox.S().trees.length > 0"))
+        log("tool bar scrolls", fade=pg.evaluate("document.querySelector('#bar').className"))
+        pg.screenshot(path=os.path.join(HERE, "out", "touch_end.png"))
         log("errors", errs=errs)
         b.close()
     return trace
 
 
 if __name__ == "__main__":
+    os.makedirs(os.path.join(HERE, "out"), exist_ok=True)
     t = run(); base = os.path.join(HERE, "touch_baseline.json")
     if MODE == "record": json.dump(t, open(base, "w"), indent=1); print(f"recorded {len(t)} steps")
     else:

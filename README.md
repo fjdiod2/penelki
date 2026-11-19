@@ -18,7 +18,7 @@ Slower end-to-end checks drive the real page in a headless browser and compare w
 each; run them before a release, not after every change). They need Python with playwright:
 
     python3 tests/desktop.py check     # mouse and keyboard
-    python3 tests/touch.py check       # fingers, on a phone-sized page
+    python3 tests/touch.py check       # fingers on a phone-sized page: camera gestures, tap to place, handles, extrude
     python3 tests/desktop.py record    # after an intended change: record the new baseline
 
 ## Files
@@ -29,7 +29,8 @@ each; run them before a release, not after every change). They need Python with 
 - `sandbox_town.js` — the town's rules as plain functions: stacking, step backs, walls as panel grids, extrude and dig
 - `sandbox_ui.js` — the tool bar, options row and buttons (shared by mouse and touch)
 - `sandbox_desktop.js` — mouse and keyboard
-- `sandbox_touch.js` — fingers
+- `sandbox_touch.js` — fingers: map-style camera, tap to place, handles
+- `sandbox_handles.js` — the touch arithmetic (two-finger gestures, where handles go), tested in Node
 - `sandbox_blocks.js` — panel blocks: layout of the pieces, holes, merging of blocks that run into each other
 - `sandbox_nature.js` — trees, the painted ground (grass, fields, bog, reeds, water, paths) and the water mirror
 - `apartments.js`, `forest_gen.js` — panel pieces and tree generator, shared with the train simulator this came from

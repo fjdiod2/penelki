@@ -115,5 +115,28 @@ export function createTown(dims, state) {
     return Math.min(d, 400);
   }
 
-  return { byId, reindex, isGround, baseOf, topOf, floorY, subtree, demolish, holeAt, holeEdgeAt, inSign, terracePts, wallFrame, cellAt, selBox, extrudeBlock, digCut, pullDepth };
+  // ---- quick building (tap to place, then adjust by handles)
+  // how far a step back goes, snapped: an end or corner in whole panels of the block below (so the tier's panels stand
+  // over the ones below), a long wall in whole end-wall panels, a ring in whole panels
+  function stepSnap(b, raw, mode) {
+    if (mode === "side") return Math.round(raw / E4) * E4;
+    if (mode === "ring" || b.closed) return Math.round(raw / W) * W;
+    const L = pathLen(b.pts, false); return Math.round(raw / (L / Math.max(1, Math.round(L / W)))) * (L / Math.max(1, Math.round(L / W)));
+  }
+  // a new block on the ground: n panels long, D deep, its near-left wall corner at c, running at angle ang
+  function newBlock(c, ang, { n = 8, D = 12, fl = 5, fin = "concrete", seed = 1 } = {}) {
+    const u = [Math.cos(ang), Math.sin(ang)], lf = V.left(u), a = V.add(c, V.mul(lf, D / 2));
+    return { id: state().nextId, pts: [a, V.add(a, V.mul(u, n * W))], closed: false, D, fl, fin, seed, parent: null };
+  }
+  // a new block on the roof of P around point p: along P, n panels (fewer if the roof is short), as deep as P or 12 m,
+  // its panels over P's panels and kept on the roof; centred across P when it fills less than its depth
+  function roofBlock(P, p, { n = 4, fl = 3, fin, seed = 1 } = {}) {
+    if (P.closed || P.pts.length !== 2) return null;
+    const { u, lf, L, D } = frame(P), m = L / Math.max(1, Math.round(L / W)), k = Math.min(n, Math.round(L / m)), len = k * m, d = Math.min(D, 12);
+    const [s] = local(P, p), s0 = Math.min(L - len, Math.max(0, Math.round((s - len / 2) / m) * m));
+    const a = V.add(P.pts[0], V.mul(u, s0));
+    return { id: state().nextId, pts: [a, V.add(a, V.mul(u, len))], closed: false, D: d, fl, fin: fin || P.fin, seed, parent: P.id };
+  }
+
+  return { stepSnap, newBlock, roofBlock, byId, reindex, isGround, baseOf, topOf, floorY, subtree, demolish, holeAt, holeEdgeAt, inSign, terracePts, wallFrame, cellAt, selBox, extrudeBlock, digCut, pullDepth };
 }

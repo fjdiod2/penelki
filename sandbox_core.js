@@ -477,9 +477,7 @@ function press() {
   }
   if (t === "carve") {
     const at = pick(), c = cellAt(at);
-    if (inSel(c)) { const { F, t0, t1, f0, f1 } = selBox(sel), p = V.add(F.o, V.mul(F.ax, (t0 + t1) / 2));
-      const P = new THREE.Vector3(p[0], F.y0 + ((f0 + f1) / 2) * H, p[1]), N = new THREE.Vector3(F.N[0], 0, F.N[1]);
-      action = { kind: "pull", b: sel.b, sel: { ...sel }, before: snapshot(), P, N, t0: alongRay(P, N) ?? 0, d: 0 }; }
+    if (inSel(c)) beginPull(sel);
     else if (c) { sel = { b: c.b, wall: c.wall, k0: c.k, k1: c.k, f0: c.f, f1: c.f }; action = { kind: "select" }; }
     else sel = null;
     showHover(); return;
@@ -565,6 +563,11 @@ function pullMove(a) {
   if (d > 0) { a.tmpBlock = town.extrudeBlock(a.sel, d, (Math.random() * 2 ** 31) | 0); S.blocks.push(a.tmpBlock); }
   else if (d < 0) { a.tmpCut = digCut(a.sel, -d); (a.b.cuts ||= []).push(a.tmpCut); }
   rebuild();
+}
+function beginPull(sl) {                           // start pulling the chosen panels out (or in): the depth follows the pointer
+  sel = sl; const { F, t0, t1, f0, f1 } = selBox(sl), p = V.add(F.o, V.mul(F.ax, (t0 + t1) / 2));
+  const P = new THREE.Vector3(p[0], F.y0 + ((f0 + f1) / 2) * H, p[1]), N = new THREE.Vector3(F.N[0], 0, F.N[1]);
+  action = { kind: "pull", b: sl.b, sel: { ...sl }, before: snapshot(), P, N, t0: alongRay(P, N) ?? 0, d: 0 };
 }
 function selOverlay(sl, mat) {                     // a coloured patch over the chosen cells, just off the wall
   const { F, t0, t1, f0, f1 } = selBox(sl), P = (t) => V.add(V.add(F.o, V.mul(F.ax, t)), V.mul(F.N, 0.12));
@@ -733,10 +736,21 @@ function clearTown() {                             // start over (undoable, the 
   S = { blocks: [], trees: [], nextId: S.nextId }; rebuild();
   undoStack.push({ before, after: snapshot(), splat: ground.patch(img, [0, 0, R, R]) }); redoStack.length = 0; scheduleSave();
 }
+// ---- for an input that edits by handles (touch): the same operations, started directly
+const setSel = (sl) => { sel = sl; };
+const beginPush = (b, wall, p, y) => startPush({ block: b, p, y }, wall);      // wall: { mode: "width", n, s } or { mode: "length", n, end }
+const layOf = (id) => { const c = cache.get(id); return c ? c.lay : null; };
+function edit(fn) { const before = snapshot(), r = fn(S); rebuild(); pushUndo(before); return r; }   // one undoable change to the town
+let ghostMesh = null;                              // a block shown as it would be built (not part of the town)
+function ghost(b) {
+  if (ghostMesh) { previewRoot.remove(ghostMesh); kit.disposeGroup(ghostMesh); ghostMesh = null; }
+  if (!b) return; const lay = kit.layout(b, baseOf(b)); ghostMesh = new THREE.Group();
+  ghostMesh.add(kit.buildMeshes([lay]), kit.roofMesh(lay), kit.overlay(lay, OV.build, 0.7)); previewRoot.add(ghostMesh);
+}
 // what is going on now; read through this object, since the values are replaced as you build
 export const now = {
   get S() { return S; }, get draft() { return draft; }, get action() { return action; }, get sel() { return sel; },
-  get busy() { return !!(draft || action); }, get input() { return prof.name; },
+  get busy() { return !!(draft || action); }, get input() { return prof.name; }, get lastFloors() { return lastFloors; },
 };
 async function start() {
   if (!(await load())) { ground.sync(); flash("Drag on the grass to lay your first block"); }
@@ -755,4 +769,6 @@ export {
   THREE, renderer, camera, controls, grid, ui, LAND, kit, mouse as cursor,
   start, save, scheduleSave, undo, redo, cancel, abortPress, press, move, release, showHover, updateDraft, commitDraft, startHeight,
   pick, alignGrid, demolish, clearTown, photo, flash, setMods,
+  scene, overlayRoot, town, rebuild, snapshot, pushUndo, applyState, tip, snapPoint, gridSnap, tolAt, screenOf, onPlane, randFin, selOverlay, OV, cellAt,
+  setSel, beginPush, beginPull, layOf, edit, ghost,
 };

@@ -58,3 +58,15 @@ test("a playground in the quietest spot, a kiosk by the road with its back to th
   }
   assert.ok(kiosks >= 5, `${kiosks} kiosks in 11 yards`);
 });
+
+test("round a ring: one continuous driveway at a steady distance from the wall, not overlapping pieces", () => {
+  const b = ring(1, 45), es = [];
+  for (let k = 0; k < 12; k++) { if (k === 7) continue; const a = (k / 12) * Math.PI * 2, c = [Math.cos(a), Math.sin(a)]; es.push({ p: V.mul(c, 45 - 6), out: V.mul(c, -1), b: 1 }); }   // all round, one missing
+  const Y = yardCells([0, 0], { blocks: [b] }), L = yardLayout(Y, { id: 3, seed: 2, entrances: es, blocks: [b] });
+  const drives = L.roads.filter((r) => r.pts.length > 2);
+  assert.equal(drives.length, 1, `one driveway, got ${L.roads.length} roads`);
+  const d = drives[0], r0 = 45 - 6 - DRIVE_OFF;
+  for (const p of d.pts) assert.ok(Math.abs(V.len(p) - r0) < 0.6, `radius ${V.len(p).toFixed(2)}`);
+  for (let i = 1; i < d.pts.length; i++) assert.ok(V.dist(d.pts[i - 1], d.pts[i]) < 3.5, "continuous");
+  const span = d.pts.slice(1).reduce((s, p, i) => s + V.dist(d.pts[i], p), 0); assert.ok(span > 0.7 * 2 * Math.PI * r0, `most of the way round: ${span.toFixed(0)} m`);
+});

@@ -7,7 +7,7 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { createBlockKit, V, offsetPoly, polyArea, pathLen, nearestOnPath, subPath, cutRects } from "./sandbox_blocks.js";
 import { createTown, MIN_D, sameWall } from "./sandbox_town.js";
-import { roadQuad, endExt, kerbs, snapToRoads, roadAt, roadProps, KERB } from "./sandbox_streets.js";
+import { roadStrip, kerbs, snapToRoads, roadAt, roadProps, KERB } from "./sandbox_streets.js";
 import { createProps } from "./props.js";
 import { entranceDetails, facadeDishes, roofAntennas, PATH_W } from "./sandbox_details.js";
 import { yardCells, yardLayout, CELL } from "./sandbox_yards.js";
@@ -105,15 +105,20 @@ function rebuild() {
 const streetRoot = new THREE.Group(); scene.add(streetRoot);
 const wireMat = new THREE.LineBasicMaterial({ color: 0x262626 });
 const ROAD_Y = 0.05;
-function roadMesh(list, all, mat = ground.roadMat) {   // the surfaces and kerbs of the roads in list, among all, as one mesh
-  const pos = [], rk = [], ra = [], idx = [], quad = (ps, ys, ks, y, al = [0, 0, 0, 0], L = 0) => { const o = pos.length / 3; ps.forEach((p, n) => { pos.push(p[0], ys[n], p[1]); rk.push(ks[n], y); ra.push(al[n], L); }); idx.push(o, o + 2, o + 1, o, o + 3, o + 2, o, o + 1, o + 2, o, o + 2, o + 3); };
+function roadMesh(list, all, mat = ground.roadMat, y = ROAD_Y) {   // the surfaces and kerbs of the roads in list, among all, as one mesh
+  const pos = [], rk = [], ra = [], idx = [];
+  const quad = (ps, ys, ks, ky, al = [0, 0, 0, 0], L = 0) => { const o = pos.length / 3; ps.forEach((p, n) => { pos.push(p[0], ys[n], p[1]); rk.push(ks[n], ky); ra.push(al[n], L); }); idx.push(o, o + 2, o + 1, o, o + 3, o + 2, o, o + 1, o + 2, o, o + 2, o + 3); };
   for (const r of list) {
-    const q = roadQuad(r, all), [ea, eb] = endExt(r, all), L = V.dist(r.pts[0], r.pts[1]);
-    quad(q, [ROAD_Y, ROAD_Y, ROAD_Y, ROAD_Y], [1, 1, -1, -1], -r.w, [-ea, L + eb, L + eb, -ea], L);   // (rk: across, -width; ra: along, length)   // (rk: across, -width)
-    for (const [a, b] of kerbs(r, all)) {             // a kerb: its top and both sides; rk.x counts metres along it (1 m stones)
-      const d = V.norm(V.sub(b, a)), n = V.mul(V.left(d), KERB.w / 2), A = V.add(a, n), B = V.add(b, n), C = V.sub(b, n), Dd = V.sub(a, n), h = KERB.h, s0 = V.dot(a, d), s1 = V.dot(b, d);
-      quad([A, B, C, Dd], [h, h, h, h], [s0, s1, s1, s0], 1);
-      quad([A, B, B, A], [0, 0, h, h], [s0, s1, s1, s0], 0.6); quad([Dd, C, C, Dd], [h, h, 0, 0], [s0, s1, s1, s0], 0.6);
+    const { left, right, s, len } = roadStrip(r, all);       // (rk: across -1..1, -width; ra: metres along, length)
+    for (let i = 0; i + 1 < left.length; i++) quad([left[i], left[i + 1], right[i + 1], right[i]], [y, y, y, y], [1, 1, -1, -1], -r.w, [s[i], s[i + 1], s[i + 1], s[i]], len);
+    if (mat !== ground.roadMat) continue;
+    for (const run of kerbs(r, all)) {                // a kerb: its top and both sides; rk.x counts metres along it (1 m stones)
+      let acc = 0;
+      for (let i = 0; i + 1 < run.length; i++) {
+        const a = run[i], b = run[i + 1], d = V.norm(V.sub(b, a)), n = V.mul(V.left(d), KERB.w / 2), A = V.add(a, n), B = V.add(b, n), C = V.sub(b, n), Dd = V.sub(a, n), h = KERB.h, s0 = acc, s1 = (acc += V.dist(a, b));
+        quad([A, B, C, Dd], [h, h, h, h], [s0, s1, s1, s0], 1);
+        quad([A, B, B, A], [0, 0, h, h], [s0, s1, s1, s0], 0.6); quad([Dd, C, C, Dd], [h, h, 0, 0], [s0, s1, s1, s0], 0.6);
+      }
     }
   }
   const geo = new THREE.BufferGeometry(); geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3)); geo.setAttribute("rk", new THREE.Float32BufferAttribute(rk, 2)); geo.setAttribute("ra", new THREE.Float32BufferAttribute(ra, 2)); geo.setIndex(idx);
@@ -136,7 +141,7 @@ function blockDetails(free) {
   for (const { b, lay } of cityLays) {
     const kids = S.blocks.filter((x) => x.parent === b.id), ws = [], exits = [], pl = isGround(b) ? PL : 0;
     lay.out.forEach((p, i) => {
-      if (p.pc === "entrance") es.push({ p: p.q, out: V.mul(p.n, -1), seed: (b.seed + i * 7919) >>> 0 });
+      if (p.pc === "entrance") es.push({ p: p.q, out: V.mul(p.n, -1), seed: (b.seed + i * 7919) >>> 0, b: b.id });
       else if (p.pc === "window" && p.pa) ws.push({ q: p.q, n: p.n, u: V.norm(V.sub(p.pb, p.pa)), y: p.y, f: Math.round((p.y - lay.base - pl) / H) });
       else if (p.pc === "roof_exit") exits.push(p.q);
     });
@@ -828,7 +833,7 @@ function showHover() {
     }
   }
   else if (t === "erase" && at && !at.block && roadAt(at.p, S.roads) < 0 && yardRegions.some((r) => r.Y.at(at.p))) { const m = cellsMesh(yardRegions.find((r) => r.Y.at(at.p)).Y, OV.erase); overlayRoot.add(m); hoverMesh.push(m); tip("remove this yard"); }
-  else if (t === "erase" && at && !at.block && roadAt(at.p, S.roads) >= 0) { const m = quadMesh(roadQuad(S.roads[roadAt(at.p, S.roads)], S.roads), 0.3, OV.erase); overlayRoot.add(m); hoverMesh.push(m); tip("remove this road"); }
+  else if (t === "erase" && at && !at.block && roadAt(at.p, S.roads) >= 0) { const m = roadMesh([S.roads[roadAt(at.p, S.roads)]], S.roads, OV.erase, 0.3).children[0]; overlayRoot.add(m); hoverMesh.push(m); tip("remove this road"); }
   else if (t === "erase" && at && at.block) { for (const id of subtree(at.block.id)) hl(byId.get(id), OV.erase); }
   else if (t === "paint" && at && at.block) hl(at.block, OV.paint);
   else if (t === "trees" && at && (!at.block || at.roof)) { brushRing.visible = true; brushRing.scale.setScalar(ui.treeR); brushRing.position.set(at.p[0], at.y + 0.3, at.p[1]); brushRing.material.color.set(mouse.shift ? 0xff6a5a : 0xffffff); }

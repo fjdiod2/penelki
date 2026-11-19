@@ -2,26 +2,37 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { V } from "../sandbox_blocks.js";
-import { endExt, roadQuad, onRoad, kerbs, snapToRoads, roadAt, roadProps, KERB } from "../sandbox_streets.js";
+import { endExt, roadStrip, onRoad, kerbs, snapToRoads, roadAt, roadProps, KERB } from "../sandbox_streets.js";
 
 const near = (a, b, e = 1e-6) => Math.abs(a - b) < e;
 const road = (id, a, b, w = 7) => ({ id, pts: [a, b], w });
-const len = (k) => V.dist(k[0], k[1]);
+const len = (k) => k.slice(1).reduce((a, p, i) => a + V.dist(k[i], p), 0);
 
 test("a road on its own: a w-wide strip, kerbs the whole length on both sides", () => {
-  const r = road(1, [0, 0], [50, 0]), q = roadQuad(r, [r]);
-  assert.ok(near(V.dist(q[0], q[3]), 7) && near(V.dist(q[0], q[1]), 50));
+  const r = road(1, [0, 0], [50, 0]), st = roadStrip(r, [r]);
+  assert.ok(near(V.dist(st.left[0], st.right[0]), 7) && near(st.s[st.s.length - 1], 50));
   const k = kerbs(r, [r]); assert.equal(k.length, 2); for (const run of k) assert.ok(near(len(run), 50, 0.01));
 });
 
-test("an L corner: both ends reach into the other road, so the corner is filled", () => {
-  const a = road(1, [0, 0], [50, 0]), b = road(2, [50, 0], [50, 40], 4), roads = [a, b];
-  assert.deepEqual(endExt(a, roads), [0, 2]); assert.deepEqual(endExt(b, roads), [3.5, 0]);
-  assert.ok(onRoad([51.9, -3.4], a, roads) && onRoad([51.9, -3.4], b, roads), "the outer corner is covered");
+test("a bent road is one strip: mitred, the same width all along, one unbroken kerb each side", () => {
+  const r = { id: 1, pts: [[0, 0], [30, 0], [50, 20], [50, 50]], w: 4 }, st = roadStrip(r, [r]);
+  assert.equal(st.left.length, 4);
+  for (let i = 1; i < 3; i++) { const c = r.pts[i]; assert.ok(V.dist(st.left[i], c) > 2 - 1e-6 && V.dist(st.left[i], c) < 2 / Math.cos(Math.PI / 8) + 1e-6, "mitred joint"); }
+  const k = kerbs(r, [r]); assert.equal(k.length, 2, "unbroken");
+  assert.ok(onRoad([40, 9], r, [r]) && !onRoad([40, 0], r, [r]), "the bend is on it, its outside corner is not");
 });
 
-test("a T junction: the through road's kerb stops where the side road joins, the side road's kerbs end at it", () => {
+test("where two roads meet end to end only one covers the corner: the lower id reaches over, the other stops at its edge", () => {
+  const a = road(1, [0, 0], [50, 0]), b = road(2, [50, 0], [50, 40], 4), roads = [a, b];
+  assert.deepEqual(endExt(a, roads), [0, 2]); assert.deepEqual(endExt(b, roads), [-3.5, 0]);
+  assert.ok(onRoad([51.9, -3.4], a, roads) && !onRoad([51.9, -3.4], b, roads), "the outer corner: a only");
+  assert.ok(!onRoad([50, 2], b, roads) && onRoad([50, 4], b, roads), "b starts at a's edge");
+});
+
+test("a T junction: the side road stops at the through road's edge; the through road's kerb stops for it", () => {
   const main = road(1, [0, 0], [60, 0]), side = road(2, [30, 0], [30, 40], 4), roads = [main, side];
+  assert.deepEqual(endExt(side, roads), [-3.5, 0]);
+  assert.ok(!onRoad([30, 2], side, roads), "no second surface on the main road");
   const km = kerbs(main, roads), lf = V.left([1, 0]);
   const sideOfMain = km.filter((k) => V.dot(k[0], lf) * Math.sign(V.dot([30, 40], lf)) > 0);
   assert.equal(sideOfMain.length, 2, "split in two around the junction");
@@ -63,4 +74,11 @@ test("the same road always gets the same things; nothing stands in water or on a
 
 test("a short road gets no poles", () => {
   const r = road(3, [0, 0], [30, 0]); assert.equal(roadProps(r, { roads: [r], blocks, attach }).items.filter((i) => i.name.startsWith("pole")).length, 0);
+});
+
+test("along a bent road the props follow the bends", () => {
+  const r = { id: 7, pts: [[0, 0], [60, 0], [100, 40], [100, 120]], w: 7 }, { items } = roadProps(r, { roads: [r], blocks: [{ id: 1, pts: [[110, 0], [110, 120]], D: 12, closed: false, parent: null }], attach });
+  assert.ok(items.length > 4);
+  for (const i of items) { const n = (pts, p) => Math.min(...pts.slice(1).map((q, k) => { const a = pts[k], d = V.sub(q, a), t = Math.max(0, Math.min(1, V.dot(V.sub(p, a), d) / V.dot(d, d))); return V.dist(p, V.add(a, V.mul(d, t))); }));
+    const d = n(r.pts, [i.p[0], i.p[2]]); assert.ok(i.name.startsWith("car") ? d < 3.5 : d > 3.5 && d < 7, `${i.name} ${d.toFixed(2)} m from the centre line`); }
 });

@@ -91,6 +91,13 @@ def run():
         # ---- a brush
         pg.tap("[data-tool=trees]"); time.sleep(0.2); cam([0, 90, 90], [0, 0, 0])
         drag1(scr(-12, 0, 36), scr(12, 0, 36), steps=20, hold=0.3); log("trees with one finger", some=pg.evaluate("window.__sandbox.S().trees.length > 0"))
+        # ---- walk mode: Walk, tap a spot, drag to look, pinch for the lens, Exit
+        cam([0, 90, 90], [0, 0, 0]); c0 = camst(); pg.tap("#walk"); time.sleep(0.2); tap(*scr(-15, 0, 30))
+        ws = lambda: pg.evaluate("(() => { const s = window.__photo.state(); return s && { y0: s.y0, pitch: +s.pitch.toFixed(2), mm: Math.round(s.mm) }; })()")
+        log("walk: tap a spot to stand there", st=ws(), bar=pg.is_visible("#photobar"), tools_hidden=not pg.is_visible("#bar"))
+        drag1((200, 300), (200, 500)); log("walk: drag down looks up", up=ws()["pitch"] > 0.3)
+        two(lambda i: [(150 - 4 * i, 400), (240 + 4 * i, 400)]); log("walk: pinch out, a longer lens", mm=ws()["mm"] > 24)
+        pg.tap("#ph-exit"); time.sleep(0.3); log("walk: Exit puts the camera back", same=camst() == c0, tools=pg.is_visible("#bar"))
         log("tool bar scrolls", fade=pg.evaluate("document.querySelector('#bar').className"))
         pg.screenshot(path=os.path.join(HERE, "out", "touch_end.png"))
         log("errors", errs=errs)

@@ -158,6 +158,9 @@ function blockExtras() {                           // dishes on facades, antenna
 }
 const propMeshes = (items) => props.build(items.map((it) => ({ name: it.name, p: new THREE.Vector3(...it.p), a: new THREE.Vector3(it.a[0], 0, it.a[1]), paint: [Math.floor(it.r * 4), 0, 0], r: it.r })));
 let yardRegions = [], allRoads = [], extraKey = "", extraObj = null, field = null, roadPrep = [];   // the yards as worked out now ({ y, Y }), the roads with their driveways
+// the camera free of the orbit controls (the street-level photo mode moves it itself)
+let freeCam = false;
+function freeCamera(on) { freeCam = on; controls.enabled = !on; }
 // While a drag moves blocks or roads (a wall, a block, a road's end), the street layer is held and made once on release.
 let streetsHeld = false;
 function holdStreets(on) { streetsHeld = on; if (!on) rebuildStreets(); }
@@ -978,7 +981,7 @@ async function start() {
   window.__sandbox = { S: () => S, D: () => draft, A: () => action && action.kind, pickAt: (x, y) => { mouse.x = x; mouse.y = y; const a = pick(); return a && { p: a.p, y: a.y, block: a.block && a.block.id, roof: a.roof }; }, rebuild, kit, camera, controls, topOf, scene, streetRoot, ground, allRoads: () => allRoads, yardRegions: () => yardRegions.map((r) => ({ id: r.y.id, area: r.Y.area })), entrances: () => cityLays.flatMap(({ lay }) => lay.out.filter((p) => p.pc === "entrance").map((p) => ({ q: p.q, n: p.n }))) };
   renderer.setAnimationLoop((t) => {
     const dt = Math.min(0.05, (t - last) / 1000); last = t;
-    emit("frame", dt); controls.update();
+    emit("frame", dt); if (!freeCam) controls.update();
     if (action && action.kind === "trees" && mouse.in && t - action.last > 70) { action.last = t; const at = pick(); if (at && plantAt(at)) { action.changed = true; trees.rebuild(S.trees, treeY); updateStats(); } showHover(); }
     ground.update(t / 1000); renderer.render(scene, camera);
   });
@@ -989,5 +992,5 @@ export {
   pick, alignGrid, demolish, clearTown, photo, flash, setMods,
   scene, overlayRoot, town, rebuild, snapshot, pushUndo, applyState, tip, snapPoint, gridSnap, tolAt, screenOf, onPlane, randFin, selOverlay, OV, cellAt,
   addRoad, roadStart, roadEnd, showRoadGhost,
-  holdStreets, setSel, beginPush, beginPull, layOf, edit, ghost, undoMark, squashUndo, dropUndo, cellOnWall, showGuides,
+  holdStreets, freeCamera, guideRoot, gridMesh, brushRing, blockField, setSel, beginPush, beginPull, layOf, edit, ghost, undoMark, squashUndo, dropUndo, cellOnWall, showGuides,
 };

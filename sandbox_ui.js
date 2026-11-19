@@ -54,7 +54,8 @@ export function renderSub() {
   else if (t === "ground") h = LAND.map(([k, l, , , c]) => chip("groundKind", k, `<i class="sw" style="background:${c}"></i>${l}`, ui.groundKind === k)).join("") + slider("groundR", 1, 40);
   if (t === "trees" || t === "ground") h += `<button class="chip ${ui.line ? "on" : ""}" data-act="line" title="Drag a straight line instead of brushing"><i class="sw dice">/</i>Line</button>`;
   $("#sub").innerHTML = h; $("#sub").style.display = h ? "" : "none";
-  const tool = TOOLS.find((x) => x.id === t); $("#hint").textContent = (now.input === "touch" && TOUCH_HINT[t]) || tool.hint;
+  const tool = TOOLS.find((x) => x.id === t); if (!tool) return;            // (the photo mode's "walk": not a tool of the bar)
+  $("#hint").textContent = (now.input === "touch" && TOUCH_HINT[t]) || tool.hint;
 }
 $("#sub").addEventListener("click", (e) => { if (e.target.closest("[data-act=grid]")) { grid.on = !grid.on; renderSub(); scheduleSave(); return; }
   if (e.target.closest("[data-act=free]")) { ui.free = !ui.free; mouse.alt = ui.free; renderSub(); return; }

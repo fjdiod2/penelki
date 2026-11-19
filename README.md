@@ -34,6 +34,8 @@ each; run them before a release, not after every change). They need Python with 
 - `sandbox_yards.js` — yards: the paint-bucket fill from a tapped point, and the driveway, link road, playground and kiosk in it
 - `sandbox_details.js` — entrance paths, benches, bins and lamps; dishes on facades; antennas on roofs
 - `props.js` — the simulator's props loader (benches, lamps, cars...); the models themselves are not in git yet
+- `sandbox_photo.js` — Walk: stand in the town (a street, a roof, a ledge) at eye height, look about, take pictures
+- `sandbox_walk.js` — the arithmetic of walking: lenses, looking, sliding along walls (tested in Node)
 - `sandbox_handles.js` — the touch arithmetic (two-finger gestures, where handles go), tested in Node
 - `sandbox_blocks.js` — panel blocks: layout of the pieces, holes, merging of blocks that run into each other
 - `sandbox_nature.js` — trees, the painted ground (grass, fields, bog, reeds, water, paths) and the water mirror

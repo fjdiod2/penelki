@@ -392,6 +392,29 @@
   "some": true
  },
  {
+  "step": "walk: tap a spot to stand there",
+  "st": {
+   "y0": 0,
+   "pitch": 0.12,
+   "mm": 24
+  },
+  "bar": true,
+  "tools_hidden": true
+ },
+ {
+  "step": "walk: drag down looks up",
+  "up": true
+ },
+ {
+  "step": "walk: pinch out, a longer lens",
+  "mm": true
+ },
+ {
+  "step": "walk: Exit puts the camera back",
+  "same": true,
+  "tools": true
+ },
+ {
   "step": "tool bar scrolls",
   "fade": "panel more-l more-r"
  },

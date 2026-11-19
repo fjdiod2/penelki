@@ -9,6 +9,7 @@ import { start } from "./sandbox_core.js";
 import { setTool } from "./sandbox_ui.js";
 import "./sandbox_desktop.js";
 import "./sandbox_touch.js";
+import "./sandbox_photo.js";
 
 await start();
 setTool("line");

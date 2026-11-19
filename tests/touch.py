@@ -51,7 +51,8 @@ def run():
         under = lambda x, y: pg.evaluate("([x,y]) => { const s = window.__sandbox, c = s.camera; c.updateMatrixWorld(); const r = new c.position.constructor(x / innerWidth * 2 - 1, -(y / innerHeight) * 2 + 1, 0.5).unproject(c).sub(c.position).normalize(); const t = (s.controls.target.y - c.position.y) / r.y; return [Math.round(c.position.x + r.x * t), Math.round(c.position.z + r.z * t)]; }", [x, y])
         g0 = under(110, 380); two(lambda i: [(80 - 4 * i, 380 - 3 * i), (140 + 4 * i, 380 + 3 * i)]); g1 = under(110, 380); log("a pinch zooms into the spot between the fingers", stays=abs(g0[0] - g1[0]) <= 2 and abs(g0[1] - g1[1]) <= 2, closer=camst()["dist"] < c4["dist"])
         drag1((200, 500), (60, 300)); pg.tap("#t-home"); time.sleep(0.9); log("the home button: back to the start", cam=camst(), visible=pg.is_visible("#t-home"))
-        two(lambda i: [(140, 500 - 8 * i), (250, 500 - 8 * i)]); c4 = camst(); log("two fingers up tilt toward the horizon", tilt=[c3["tilt"], c4["tilt"]], tilted=c4["tilt"] > c3["tilt"], dist_same=abs(c4["dist"] - c3["dist"]) <= 1)
+        c5 = camst(); two(lambda i: [(140, 500 - 8 * i), (250, 500 - 8 * i)]); c6 = camst(); log("two fingers up tilt toward the horizon", tilt=[c5["tilt"], c6["tilt"]], tilted=c6["tilt"] > c5["tilt"], dist_same=abs(c6["dist"] - c5["dist"]) <= 1)
+        two(lambda i: [(140, 300 + 25 * i), (250, 302 + 25 * i)]); c7 = camst(); log("two fingers down: from above", tilt=c7["tilt"], from_above=c7["tilt"] < 15)
         # ---- tap to place: the placing stage (move, walls, floors), Done, one undo step
         cam([0, 90, 90], [0, 0, 0])
         held = lambda: pg.evaluate("window.__touch.held()")

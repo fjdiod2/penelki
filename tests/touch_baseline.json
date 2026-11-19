@@ -46,11 +46,16 @@
  {
   "step": "two fingers up tilt toward the horizon",
   "tilt": [
-   45,
+   62,
    86
   ],
   "tilted": true,
-  "dist_same": false
+  "dist_same": true
+ },
+ {
+  "step": "two fingers down: from above",
+  "tilt": 3,
+  "from_above": true
  },
  {
   "step": "tap places a block, being placed",

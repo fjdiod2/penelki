@@ -29,6 +29,9 @@ test("sliding sideways, pinching, twisting, or one finger up and one down: move"
 test("a tilt as real fingers do it: hand at a slant, a little drift, one finger a bit behind", () => {
   assert.equal(classifyTwo([[120, 420], [240, 370]], [[126, 396], [242, 344]]), "tilt");
   assert.equal(classifyTwo([[120, 420], [250, 410]], [[115, 450], [251, 446]]), "tilt");
+  const s0 = [[140, 500], [250, 500]];
+  assert.equal(classifyTwo(s0, [[140, 484], [250, 500]]), null, "one finger reported, the other not yet: wait");
+  assert.equal(classifyTwo(s0, [[140, 484], [250, 492]]), "tilt", "one a step behind the other");
 });
 test("fingers one above the other moving up: a slide, not a tilt", () => {
   assert.equal(classifyTwo([[200, 300], [210, 500]], [[200, 260], [210, 460]]), "move");

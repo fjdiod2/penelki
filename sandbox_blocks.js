@@ -106,7 +106,7 @@ export async function createBlockKit(fog) {
     const d = V.sub(b, a), L = V.len(d), u = V.mul(d, 1 / (L || 1));
     X.set(u[0], 0, u[1]).multiplyScalar(L / A.geo[pc].pw); Y.set(u[1], 0, -u[0]); Z.copy(UP).multiplyScalar(zs);
     // q, n, y, h: the middle of its face on the plan, the direction into the building, its foot and height (for merging)
-    return { pc, m: new THREE.Matrix4().makeBasis(X, Y, Z).setPosition(a[0], y, a[1]), win, v2, door, rnd, q: V.lerp(a, b, 0.5), n: V.left(u), y, h: PIECE_H[pc] ?? H * zs, trim: pc in PIECE_H };
+    return { pc, m: new THREE.Matrix4().makeBasis(X, Y, Z).setPosition(a[0], y, a[1]), win, v2, door, rnd, q: V.lerp(a, b, 0.5), n: V.left(u), y, h: PIECE_H[pc] ?? H * zs, trim: pc in PIECE_H, pa: a, pb: b };
   }
   const PIECE_H = { plinth: PL, plinth_end: PL, parapet: 0.6, parapet_end: 0.6, pipe: 0.4 };      // not full storey panels: in a shared wall plane these always give way
   function flat(pc, o, dir, y) {                  // a roof box: x along dir, y to the V.left of it
@@ -200,13 +200,27 @@ export async function createBlockKit(fog) {
       if (pc.roof) { if (!isEmpty(i, j, FL - 1)) out.push(pc); continue; }
       if (pc.pc === "pipe") { let any = false; for (let f = 0; f < FL; f++) any ||= isEmpty(i, j, f); if (!any) out.push(pc); continue; }
       const f = pc.pc.startsWith("plinth") ? 0 : pc.pc.startsWith("parapet") ? FL - 1 : Math.min(FL - 1, Math.max(0, Math.round((pc.y - y0) / H)));
-      if (!isEmpty(i, j, f)) out.push(pc);
+      // a hole's edge can cut through a panel (a dig not in whole panels of this wall): keep the part in front of solid
+      // building, as plain wall where it is too narrow for its window
+      const [sa, wa] = loc(pc.pa), [sb, wb] = loc(pc.pb), alongS = Math.abs(sb - sa) > Math.abs(wb - wa), t0v = alongS ? sa : wa, t1v = alongS ? sb : wb;
+      const ts = [0, ...(alongS ? ss : ws).map((v) => (v - t0v) / (t1v - t0v)).filter((t) => t > 0.02 && t < 0.98).sort((x, y) => x - y), 1];
+      if (ts.length === 2) { if (!isEmpty(i, j, f)) out.push(pc); continue; }
+      const cellOf = (q) => { const [s1, w1] = loc(q); return [idx(ss, Math.min(L - E, Math.max(E, s1))), idx(ws, Math.min(D / 2 - E, Math.max(-D / 2 + E, w1)))]; };
+      const solidPart = ts.slice(0, -1).map((t, k) => { const [ci, cj] = cellOf(V.lerp(pc.pa, pc.pb, (t + ts[k + 1]) / 2)); return !isEmpty(ci, cj, f); });
+      if (solidPart.every(Boolean)) { out.push(pc); continue; }
+      for (let k = 0; k < solidPart.length; k++) {
+        if (!solidPart[k]) continue; let e = k; while (e + 1 < solidPart.length && solidPart[e + 1]) e++;
+        const a = V.lerp(pc.pa, pc.pb, ts[k]), c = V.lerp(pc.pa, pc.pb, ts[e + 1]), wide = V.dist(a, c) >= 0.75 * W;
+        const kind = wide || /^(end|plinth_end|parapet_end)$/.test(pc.pc) ? pc.pc : /plinth/.test(pc.pc) ? "plinth_end" : /parapet/.test(pc.pc) ? "parapet_end" : "end";
+        out.push(piece(kind, a, c, pc.y, pc.win, pc.v2, pc.door, pc.rnd)); k = e;
+      }
     }
     // the hole's surfaces
     const quads = [], hull = [];
     const wallPiece = (pcn, p, q, y, inward, win) => { if (V.dot(V.left(V.sub(q, p)), inward) < 0) [p, q] = [q, p]; return piece(pcn, p, q, y, win, 0, 0, r()); };
     const vface = (a, bq, f, inward, windows) => {          // one cell's wall, split into panels about a panel wide
-      const len = V.dist(a, bq), ne = Math.max(1, Math.round(len / (windows ? W : E4)));
+      const len = V.dist(a, bq); let ne = Math.max(1, Math.round(len / (windows ? W : E4)));
+      if (windows && len / ne < 0.75 * W) { windows = false; ne = Math.max(1, Math.round(len / E4)); }   // too narrow for a window panel: plain wall
       for (let k = 0; k < ne; k++) {
         const p = V.lerp(a, bq, k / ne), q = V.lerp(a, bq, (k + 1) / ne);
         out.push(windows ? wallPiece("window", p, q, y0 + f * H, inward, pick(MAIN)) : wallPiece("end", p, q, y0 + f * H, inward, pick(TWO)));

@@ -117,3 +117,26 @@ test("offsetPoly, nearestOnPath, subPath", () => {
   const n = nearestOnPath(p, false, [4, 3]); assert.ok(near(n.d, 3) && near(n.q[0], 4));
   assert.ok(near(pathLen(subPath(p, 2, 7), false), 5));
 });
+
+test("a shallow dig at a corner lines its narrow sides with plain wall, not squeezed window panels", () => {
+  const width = (p) => Math.hypot(p.m.elements[0], p.m.elements[2]) * ({ window: 3.2, end: 3, end_narrow: 3 }[p.pc] || 3.2);
+  for (const cut of [{ end: 0, w0: 3, w1: 6, f0: 0, f1: 5, d: 1.6 }, { side: 1, s0: 0, s1: W, f0: 1, f1: 4, d: 1.6 }, { side: -1, s0: 9 * W, s1: 10 * W, f0: 0, f1: 3, d: 0.8 }]) {
+    const lay = kit.layout(block({ cuts: [cut] }), 0);
+    const narrow = lay.out.filter((p) => p.pc === "window" && width(p) < 0.75 * W);
+    assert.deepEqual(narrow.map((p) => +width(p).toFixed(2)), [], JSON.stringify(cut));
+  }
+});
+
+test("a dig whose edge cuts through a panel of the next wall keeps that panel's solid part (no see-through gap)", () => {
+  // the part of wall `w` (+6 or -6 across) at floor f covered by pieces, along the block
+  const covered = (lay, b, wAt, f) => lay.out.filter((p) => p.pa && !p.roof && Math.abs(Math.abs(V.dot(V.sub(p.q, b.pts[0]), V.left([1, 0]))) - 6) < 0.01 && Math.sign(V.dot(V.sub(p.q, b.pts[0]), V.left([1, 0]))) === Math.sign(wAt) && Math.abs(p.y - (PL + f * H)) < 0.01 && STOREY(p))
+    .map((p) => [Math.min(p.pa[0], p.pb[0]), Math.max(p.pa[0], p.pb[0])]).sort((a, c) => a[0] - c[0]);
+  const b = block({ cuts: [{ end: 0, w0: 3, w1: 6, f0: 0, f1: 5, d: 1.6 }] }), lay = kit.layout(b, 0);
+  const runs = covered(lay, b, 6, 2);                                     // the long wall beside the dug corner, floor 2
+  assert.ok(runs.length && near(runs[0][0], 1.6, 0.01), `starts where the hole ends: ${JSON.stringify(runs.slice(0, 2))}`);
+  for (let i = 1; i < runs.length; i++) assert.ok(near(runs[i][0], runs[i - 1][1], 0.01), "no gaps along it");
+  // and across: a corner dug 1.6 m into a long wall leaves the rest of the 3 m end-wall panel
+  const b2 = block({ cuts: [{ side: 1, s0: 0, s1: W, f0: 0, f1: 5, d: 1.6 }] }), l2 = kit.layout(b2, 0);
+  const ends = l2.out.filter((p) => p.pa && Math.abs(p.q[0]) < 0.01 && Math.abs(p.y - (PL + 2 * H)) < 0.01 && STOREY(p)).map((p) => [Math.min(p.pa[1], p.pb[1]), Math.max(p.pa[1], p.pb[1])]).sort((a, c) => a[0] - c[0]);
+  const span = ends.reduce((s, r) => s + r[1] - r[0], 0); assert.ok(near(span, 12 - 1.6, 0.01), `end wall covered but for the dig: ${span}`);
+});

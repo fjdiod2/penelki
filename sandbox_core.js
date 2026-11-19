@@ -93,6 +93,9 @@ function rebuild() {
 const undoStack = [], redoStack = [];
 const snapshot = () => JSON.stringify(S);
 function pushUndo(before, splat = null) { undoStack.push({ before, after: snapshot(), splat }); if (undoStack.length > 150) undoStack.shift(); redoStack.length = 0; scheduleSave(); }
+const undoMark = () => undoStack.length;            // several changes as one: squash them, or drop them (Cancel)
+function squashUndo(m) { if (undoStack.length - m < 2) return; const es = undoStack.splice(m); undoStack.push({ before: es[0].before, after: es[es.length - 1].after, splat: null }); }
+function dropUndo(m) { if (undoStack.length > m) undoStack.length = m; }
 function applyState(json) { S = JSON.parse(json); rebuild(); }
 function undo() { sel = null; const e = undoStack.pop(); if (!e) return; if (e.splat) putSplat(e.splat, "before"); if (e.before !== e.after) applyState(e.before); redoStack.push(e); scheduleSave(); }
 function redo() { sel = null; const e = redoStack.pop(); if (!e) return; if (e.splat) putSplat(e.splat, "after"); if (e.before !== e.after) applyState(e.after); undoStack.push(e); scheduleSave(); }
@@ -148,10 +151,11 @@ function gridSnap(p) {
 const snap = gridSnap;
 let featMemo = null;                              // what new blocks can line up with; worked out again after every rebuild
 // Guides come from the walls: corners, wall lines, end lines, ring centres, and the gaps between parallel walls.
-function features() {
-  if (featMemo) return featMemo;
-  const pts = [], lines = [], dirs = [], segs = [];
+function features(except = null) {                // except: a block (and what stands on it) to leave out, as when moving it
+  if (!except && featMemo) return featMemo;
+  const pts = [], lines = [], dirs = [], segs = [], skip = except ? subtree(except) : null;
   for (const b of S.blocks) {
+    if (skip && skip.has(b.id)) continue;
     const c = cache.get(b.id); if (!c) continue; const { Lp, Rp } = c.lay;
     if (b.closed) { const P = b.pts, cc = P.reduce((a, q) => V.add(a, q), [0, 0]); pts.push({ p: V.mul(cc, 1 / P.length), why: "centred" }); continue; }
     const n = Lp.length;
@@ -171,7 +175,7 @@ function features() {
   }
   const top = [...gaps.keys()].sort((a, b) => gaps.get(b) - gaps.get(a)).slice(0, 4);
   for (const sg of segs) for (const g of top) for (const k of [1, -1]) lines.push({ a: V.add(sg.a, V.mul(V.left(sg.u), g * k)), u: sg.u, why: `same gap · ${Math.round(g)} m`, gap: true });
-  return (featMemo = { pts, lines, dirs });
+  const F = { pts, lines, dirs }; if (!except) featMemo = F; return F;
 }
 function tolAt(p, y) {                            // 14 screen pixels (30 for a finger), in metres, at that spot
   const d = camera.position.distanceTo(tmpV.set(p[0], y, p[1])), m = (2 * d * Math.tan((camera.fov * Math.PI) / 360)) / innerHeight;
@@ -189,9 +193,9 @@ export function setInput(kind) { prof = PROFILES[kind]; }
 const EDGE = () => prof.edge;                     // how near a roof or hole edge counts as grabbing it
 const along = (l, p) => V.add(l.a, V.mul(l.u, V.dot(V.sub(p, l.a), l.u)));      // p dropped onto the guide line
 function meet(l1, l2) { const c = l1.u[0] * l2.u[1] - l1.u[1] * l2.u[0]; if (Math.abs(c) < 0.1) return null; const d = V.sub(l2.a, l1.a), t = (d[0] * l2.u[1] - d[1] * l2.u[0]) / c; return V.add(l1.a, V.mul(l1.u, t)); }
-function snapPoint(p, y) {                        // a start point or ring centre: -> { p, guides: [{ kind, a, b, why }] }
+function snapPoint(p, y, except = null) {          // a start point or ring centre: -> { p, guides: [{ kind, a, b, why }] }
   if (mouse.alt) return { p, guides: [] };
-  const tol = tolAt(p, y), F = features();
+  const tol = tolAt(p, y), F = features(except);
   let best = null; for (const f of F.pts) { const d = V.dist(f.p, p); if (d < tol && (!best || d < best.d)) best = { d, f }; }
   if (best) return { p: best.f.p, guides: [{ kind: "pt", a: best.f.p, why: best.f.why }] };
   const near = F.lines.map((l) => ({ l, d: V.dist(along(l, p), p) })).filter((x) => x.d < tol).sort((a, b) => a.d - b.d);
@@ -770,5 +774,5 @@ export {
   start, save, scheduleSave, undo, redo, cancel, abortPress, press, move, release, showHover, updateDraft, commitDraft, startHeight,
   pick, alignGrid, demolish, clearTown, photo, flash, setMods,
   scene, overlayRoot, town, rebuild, snapshot, pushUndo, applyState, tip, snapPoint, gridSnap, tolAt, screenOf, onPlane, randFin, selOverlay, OV, cellAt,
-  setSel, beginPush, beginPull, layOf, edit, ghost,
+  setSel, beginPush, beginPull, layOf, edit, ghost, undoMark, squashUndo, dropUndo, cellOnWall, showGuides,
 };

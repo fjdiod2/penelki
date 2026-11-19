@@ -14,7 +14,7 @@ export const TOOLS = [  { id: "line", key: "1", name: "Block", hint: "Drag a wal
 const TOUCH_HINT = {
   line: "Tap the ground for a block · tap a block, then drag its arrows · tap its roof to build on top",
   curve: "Drag from end to end, then drag to bend it and tap", floors: "Drag a roof up or down for floors",
-  carve: "Tap a panel, tap another for a rectangle · then drag the arrow", paint: "Tap blocks to repaint them",
+  carve: "Tap a panel · drag the arrows round it to stretch the choice · Next · then drag the arrow", paint: "Tap blocks to repaint them",
   trees: "Paint trees with one finger · two fingers move the view", ground: "Paint with one finger · two fingers move the view",
   erase: "Tap a block to knock it down",
 };

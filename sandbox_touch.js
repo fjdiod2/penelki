@@ -1,33 +1,58 @@
 // Панельки, fingers. The camera works as in map apps: one finger slides the view, two fingers pinch to zoom, twist
 // to turn, and move up or down together to tilt. Building is done by tapping and by handles:
-//   Block    tap the ground for a block, tap a block to select it; its arrows push and pull its walls, the arrow above
-//            it sets the floors, the blue tabs on its roof step back (drag inward); tap its roof to build on top
-//   Extrude  tap a panel, tap another on that wall to choose the rectangle between; drag the arrow to build out or dig
+//   Block    tap the ground: a new block, being placed: drag its middle to move it, its arrows to push its walls, the
+//            arrow above it for floors; Done (or tap away) builds it, Cancel takes it back. Tap a built block to select
+//            it: its walls and floors again, and blue tabs on its roof: drag one inward to step back (the new tier is
+//            then being placed: move it, size it, Done). Tap a selected block's roof to build a block on top.
+//   Extrude  tap a panel: a choice of panels: drag its edges to stretch it, its middle to move it; Next; then drag the
+//            arrow out to build or in to dig
 //   Paint, Demolish  tap a block
 //   Curve, Ring, Trees, Land  one finger draws or paints (as the mouse does); two fingers move the view
 // A one-finger drag that does not start on a handle slides the view, so the town can't be changed by accident.
 import { THREE, renderer, camera, controls, ui, grid, kit, cursor as mouse, now, setInput, setMods, press, move, release, abortPress, cancel,
-  showHover, updateDraft, commitDraft, startHeight, flash, on, pick, scene, overlayRoot, town, rebuild, snapshot, pushUndo, applyState, tip,
-  snapPoint, screenOf, onPlane, randFin, selOverlay, OV, cellAt, setSel, beginPush, beginPull, layOf, edit, ghost } from "./sandbox_core.js";
+  showHover, updateDraft, commitDraft, startHeight, flash, on, pick, overlayRoot, town, rebuild, snapshot, pushUndo, applyState, tip,
+  snapPoint, tolAt, screenOf, onPlane, randFin, selOverlay, OV, cellAt, cellOnWall, setSel, beginPush, beginPull, layOf, edit, ghost,
+  undoMark, squashUndo, dropUndo, showGuides } from "./sandbox_core.js";
 import { renderSub } from "./sandbox_ui.js";
 import { sameWall } from "./sandbox_town.js";
-import { classifyTwo, blockHandles, cull, hitHandle } from "./sandbox_handles.js";
+import { classifyTwo, blockHandles, outline, selHandles, arrange, hitHandle } from "./sandbox_handles.js";
 import { V } from "./sandbox_blocks.js";
 
 controls.touches = { ONE: -1, TWO: -1 };           // OrbitControls leaves fingers alone: they are handled here
 const cvs = renderer.domElement, $ = (s) => document.querySelector(s);
 const { W, H } = kit;
 const DRAWS = new Set(["curve", "ring", "trees", "ground"]);   // tools where one finger draws or paints
-const HANDLE_PX = 46, HIT_PX = 34;
+const HANDLE_PX = 46, HIT_PX = 32, GAP_PX = 50;
 
 cvs.addEventListener("pointerdown", (e) => { if (e.pointerType === "touch") touchDown(e); });
 cvs.addEventListener("pointermove", (e) => { if (e.pointerType === "touch") touchMove(e); });
 cvs.addEventListener("pointerup", (e) => { if (e.pointerType === "touch") touchUp(e); });
 cvs.addEventListener("pointercancel", (e) => { if (e.pointerType === "touch") touchUp(e, true); });
 
-let selId = null;                                  // the block selected in the Block tool
-const selBlock = () => (selId == null ? null : now.S.blocks.find((b) => b.id === selId) || null);
-function select(id) { selId = id; updateTouchbar(); }
+// ---------------------------------------------------------------- what is being worked on
+// blk: the block in hand in the Block tool: { id, phase: "place" (new: move it, size it; Done or Cancel) or "select"
+// (built: size it, step back from it), before / mark: the town and the undo stack before it was placed }
+// cv: the Extrude tool's stage: "choose" (the choice of panels: stretch it, move it) or "pull" (the arrow)
+let blk = null, cv = null;
+const blkBlock = () => (blk ? now.S.blocks.find((b) => b.id === blk.id) || null : null);
+function placeNew(b) {                             // put a new block in the town, being placed
+  const before = snapshot(), mark = undoMark(); edit((S) => { S.blocks.push(b); S.nextId++; });
+  blk = { id: b.id, phase: "place", before, mark }; status();
+}
+function finishPlace() { if (blk && blk.phase === "place") { squashUndo(blk.mark); blk.phase = "select"; } }   // placed: one undo step
+function letGo() { finishPlace(); blk = null; status(); }
+function cancelPlace() { if (!blk || blk.phase !== "place") return; applyState(blk.before); dropUndo(blk.mark); blk = null; status(); }
+function status() {                                // the tip and the buttons for what is in hand
+  updateTouchbar();
+  if (hd) return;
+  if (blk && blk.phase === "place") tip("place it<small>drag the middle to move it · the arrows for its walls and floors · Done</small>");
+  else if (blk) tip("<small>arrows: walls and floors · blue tabs on the roof: drag inward to step back · tap the roof to build on it</small>");
+  else if (cv && now.sel) { const s = now.sel, k = Math.abs(s.k1 - s.k0) + 1, f = Math.abs(s.f1 - s.f0) + 1;
+    tip(cv === "choose" ? `${k} × ${f} panel${k * f > 1 ? "s" : ""}<small>drag the edges to stretch it, the middle to move it · Next</small>` : `${k} × ${f} panel${k * f > 1 ? "s" : ""}<small>drag the arrow ${ui.carve === "out" ? "out to build" : "in to dig"}</small>`); }
+  else tip("");
+  if (now.input === "touch") placeTip();
+}
+function placeTip() { const el = $("#tip"); if (el.style.display === "none") return; el.style.left = Math.max(8, (innerWidth - el.offsetWidth) / 2) + "px"; el.style.top = "64px"; }
 
 // ---------------------------------------------------------------- fingers
 // g: the one-finger gesture: "wait" (not yet a tap or a drag), "pan", "tool" (the tool, as a mouse press), "handle"
@@ -56,7 +81,7 @@ function touchMove(e) {
   if (g.kind === "pan") { pan(g.last, q); g.last = q; return; }
   mouse.x = q[0]; mouse.y = q[1]; g.last = q;
   if (g.kind === "tool") { if (!g.started) { if (g.moved) startTool(); return; } move(); return; }
-  if (g.kind === "handle" && g.moved) { if (!g.drag) startHandle(g.h); dragHandle(); }
+  if (g.kind === "handle" && (g.moved || hd)) { if (!hd) startHandle(g.h); dragHandle(); }
 }
 function touchUp(e, cancelled = false) {
   fingers.delete(e.pointerId);
@@ -69,7 +94,7 @@ function endOne(cancelled) {                       // the one-finger gesture end
     if (cancelled) { if (g.started) abortPress(); }
     else { if (!g.started) startTool(); up(!g.moved); }
     mouse.in = false; showHover();
-  } else if (g.kind === "handle" && g.drag) { cancelled ? abortHandle() : endHandle(); mouse.in = false; showHover(); }
+  } else if (g.kind === "handle") { if (hd) { cancelled ? abortHandle() : endHandle(); mouse.in = false; showHover(); status(); } }   // (a tap on a handle does nothing)
   else if (!cancelled && !g.moved) tap(g.x0, g.y0);
   updateTouchbar();
 }
@@ -97,108 +122,139 @@ function tap(x, y) {
   else if (t === "paint" || t === "erase") { mouse.in = true; press(); release(); mouse.in = false; showHover(); }
 }
 let told = false;
+const seed = () => (Math.random() * 2 ** 31) | 0;
 function tapBuild(at) {
   if (!at) return;
-  const sb = selBlock();
-  if (at.block && at.block !== sb) { select(at.block.id); return; }
-  if (at.block && at.roof && at.floor == null) {                       // the selected block's roof: a block on top of it
+  const cur = blkBlock();
+  if (at.block && cur && at.block.id === cur.id && at.roof && at.floor == null) {     // the roof of the block in hand: a block on top
+    finishPlace();
     const r = town.roofBlock(at.block, at.p, { fl: 3, fin: ui.fin === "random" ? at.block.fin : ui.fin, seed: seed() });
-    if (r) { edit((S) => { S.blocks.push(r); S.nextId++; }); select(r.id); }
+    if (r) placeNew(r);
     return;
   }
-  if (at.block) return;
-  if (sb) { select(null); return; }                                    // tapping away lets go first
+  if (at.block) { if (!cur || at.block.id !== cur.id) { finishPlace(); blk = { id: at.block.id, phase: "select" }; status(); } return; }
+  if (blk) { letGo(); return; }                    // tapping away lets go first
   const ang = grid.on ? grid.ang : 0, u = [Math.cos(ang), Math.sin(ang)], n = 8, D = 12;
   let c = V.sub(V.sub(at.p, V.mul(u, (n * W) / 2)), V.mul(V.left(u), D / 2));   // centred on the tap
   if (!ui.free) c = snapPoint(c, 0).p;
-  const b = town.newBlock(c, ang, { n, D, fl: now.lastFloors, fin: ui.fin === "random" ? randFin() : ui.fin, seed: seed() });
-  edit((S) => { S.blocks.push(b); S.nextId++; }); select(b.id);
-  if (!told) { told = true; flash("Drag its arrows to shape it · blue tabs on the roof step back"); }
+  placeNew(town.newBlock(c, ang, { n, D, fl: now.lastFloors, fin: ui.fin === "random" ? randFin() : ui.fin, seed: seed() }));
+  if (!told) { told = true; flash("Move it, size it, then Done"); }
 }
-const seed = () => (Math.random() * 2 ** 31) | 0;
 function tapCarve(at) {
-  const c = cellAt(at), s = now.sel;
-  if (!c) { setSel(null); return; }
-  if (s && s.b === c.b && sameWall(s.wall, c.wall)) {
-    if (s.k0 === s.k1 && s.f0 === s.f1 && s.k0 === c.k && s.f0 === c.f) { setSel(null); return; }   // the one chosen panel again: none
-    setSel({ ...s, k1: c.k, f1: c.f });                                 // the rectangle from the first panel to this one
-  } else setSel({ b: c.b, wall: c.wall, k0: c.k, k1: c.k, f0: c.f, f1: c.f });
-  const n = now.sel, k = Math.abs(n.k1 - n.k0) + 1, f = Math.abs(n.f1 - n.f0) + 1;
-  tip(`${k} × ${f} panel${k * f > 1 ? "s" : ""}<small>${k * f === 1 ? "tap another for a rectangle · " : ""}drag the arrow ${ui.carve === "out" ? "out to build" : "in to dig"}</small>`);
+  const c = cellAt(at);
+  if (cv === "pull" && !c) return;                 // (the arrow stage: a stray tap does not lose the choice)
+  if (!c) { setSel(null); cv = null; status(); return; }
+  setSel({ b: c.b, wall: c.wall, k0: c.k, k1: c.k, f0: c.f, f1: c.f }); cv = "choose"; status();
 }
 
 // ---------------------------------------------------------------- handles
-// shown for the selected block (Block tool) or the chosen panels (Extrude); drawn as round badges that stay the same
-// size on screen, found by distance on screen
+// shown for the block in hand (Block tool) or the choice of panels (Extrude); drawn as round badges that stay the same
+// size on screen, laid out on screen (sandbox_handles.js arrange) and found by distance on screen
 function handles() {
-  if (document.body.classList.contains("clean") || stepping()) return [];
-  if (ui.tool === "line") { const b = selBlock(), lay = b && layOf(b.id); return lay ? blockHandles(b, lay) : []; }
-  if (ui.tool === "carve" && now.sel && now.S.blocks.includes(now.sel.b)) {
-    const { F, t0, t1, f0, f1 } = town.selBox(now.sel), p = V.add(V.add(F.o, V.mul(F.ax, (t0 + t1) / 2)), V.mul(F.N, 1.5)), dir = ui.carve === "out" ? F.N : V.mul(F.N, -1);
-    return [{ kind: "pull", at: [p[0], F.y0 + ((f0 + f1) / 2) * H, p[1]], dir }];
+  if (document.body.classList.contains("clean") || stepping()) return { list: [], hull: [] };
+  if (ui.tool === "line") { const b = blkBlock(), lay = b && layOf(b.id); return lay ? { list: blockHandles(b, lay, blk.phase), hull: outline(lay) } : { list: [], hull: [] }; }
+  const s = now.sel;
+  if (ui.tool === "carve" && cv && s && now.S.blocks.includes(s.b)) {
+    const { F, t0, t1, f0, f1 } = town.selBox(s), P = (t, f) => { const q = V.add(F.o, V.mul(F.ax, t)); return [q[0], F.y0 + f * H, q[1]]; };
+    return { list: selHandles(F, { t0, t1, f0, f1 }, H, cv, ui.carve === "out"), hull: [P(t0, f0), P(t1, f0), P(t1, f1), P(t0, f1)] };
   }
-  return [];
+  return { list: [], hull: [] };
 }
-let shown = { list: [], pts: [], keep: [] };
-function layoutHandles() {
-  const list = handles(), pts = list.map((h) => { const v = new THREE.Vector3(...h.at).project(camera); return v.z > 1 ? null : [(v.x + 1) / 2 * innerWidth, (1 - v.y) / 2 * innerHeight]; });
-  shown = { list, pts, keep: cull(pts, HANDLE_PX * 0.9, innerWidth, innerHeight) };
+const project = (q) => { const v = new THREE.Vector3(...q).project(camera); return v.z > 1 ? null : [(v.x + 1) / 2 * innerWidth, (1 - v.y) / 2 * innerHeight]; };
+let shown = { list: [], pts: [] };
+function freeArea() {                             // the screen not covered by the bars (with the buttons) and the tip
+  const r = (s) => { const e = $(s), q = e && e.getBoundingClientRect(); return q && q.width > 0 && q.height > 0 ? q : null; }, top = r("#topright"), tp = r("#tip"), dock = r("#dock");
+  return { x0: 0, y0: Math.max(top ? top.bottom : 0, tp && tp.top < innerHeight / 3 ? tp.bottom : 0), w: innerWidth, h: dock ? dock.top : innerHeight };
 }
-function handleAt(q) { layoutHandles(); const i = hitHandle(shown.pts, shown.keep, q, HIT_PX); return i < 0 ? null : shown.list[i]; }
+function layoutHandles() { camera.updateMatrixWorld(); const { list, hull } = handles(); shown = { list, pts: arrange(list, project, hull, { gap: GAP_PX, ...freeArea() }) }; }
+function handleAt(q) { layoutHandles(); const i = hitHandle(shown.pts, q, HIT_PX); return i < 0 ? null : shown.list[i]; }
 
-// drags. push and pull go through the core (its snapping and guides); floors and steps are done here
+// drags. push and pull go through the core (its snapping and guides); the rest are done here
 let hd = null;
 function startHandle(h) {
-  const b = h.kind === "pull" ? now.sel.b : selBlock(); mouse.in = true; mouse.x = g.x0; mouse.y = g.y0;
-  if (h.kind === "push") { const p = onPlane(h.at[1]); if (!p) return; beginPush(b, h.wall, p, h.at[1]); g.drag = true; hd = { h }; return; }
-  if (h.kind === "pull") { beginPull(now.sel); g.drag = true; hd = { h }; return; }
+  mouse.in = true; mouse.x = g.x0; mouse.y = g.y0;
+  if (h.kind === "pull") { beginPull(now.sel); hd = { h }; return; }
+  if (h.kind === "edge" || (h.kind === "move" && ui.tool === "carve")) { const s = now.sel, c = cellOnWall(s.b, s.wall); if (!c) return; hd = { h, s0: { ...s }, c0: c }; return; }
+  const b = blkBlock(); if (!b) return;
+  if (h.kind === "push") { const p = onPlane(h.at[1]); if (!p) return; beginPush(b, h.wall, p, h.at[1]); hd = { h }; return; }
   const before = snapshot();
   if (h.kind === "floors") {
     const s0 = screenOf(h.at[0], h.at[1], h.at[2]), s1 = screenOf(h.at[0], h.at[1] + H, h.at[2]);
     hd = { h, b, before, fl0: b.fl, y0: g.y0, ppf: Math.min(40, Math.max(14, Math.abs(s0[1] - s1[1]))) };
-  } else if (h.kind === "step") { const grab = onPlane(h.at[1]); if (!grab) return; hd = { h, b, before, grab, inset: 0 }; }
-  g.drag = true;
+  } else if (h.kind === "move") { const grab = onPlane(h.at[1]); if (!grab) return; hd = { h, b, before, grab, b0: JSON.parse(JSON.stringify(b)), applied: [0, 0] }; }
+  else if (h.kind === "step") { const grab = onPlane(h.at[1]); if (!grab) return; hd = { h, b, before, grab, inset: 0 }; }
 }
+const clampi = (v, a, b) => Math.max(a, Math.min(b, v));
 function dragHandle() {
   if (!hd) return; const { h } = hd;
-  if (h.kind === "push" || h.kind === "pull") { move(); return; }
+  if (h.kind === "push" || h.kind === "pull") { move(); placeTip(); return; }
+  if (h.kind === "edge" || (h.kind === "move" && ui.tool === "carve")) {          // the choice of panels: an edge, or all of it
+    const s = hd.s0, c = cellOnWall(s.b, s.wall); if (!c) return; const F = town.wallFrame(s.b, s.wall);
+    let k0 = Math.min(s.k0, s.k1), k1 = Math.max(s.k0, s.k1), f0 = Math.min(s.f0, s.f1), f1 = Math.max(s.f0, s.f1);
+    if (h.edge === "k1") k1 = Math.max(k0, c.k); else if (h.edge === "k0") k0 = Math.min(k1, c.k); else if (h.edge === "f1") f1 = Math.max(f0, c.f); else if (h.edge === "f0") f0 = Math.min(f1, c.f);
+    else { const dk = clampi(c.k - hd.c0.k, -k0, F.n - 1 - k1), df = clampi(c.f - hd.c0.f, -f0, F.fl - 1 - f1); k0 += dk; k1 += dk; f0 += df; f1 += df; }
+    setSel({ ...s, k0, k1, f0, f1 }); status(); return;
+  }
   if (h.kind === "floors") {
     const fl = Math.max(1, Math.min(200, hd.fl0 + Math.round((hd.y0 - mouse.y) / hd.ppf)));
     if (fl !== hd.b.fl) { hd.b.fl = fl; rebuild(); }
-    tip(`${fl} floor${fl > 1 ? "s" : ""}<small>drag up or down</small>`); return;
+    tip(`${fl} floor${fl > 1 ? "s" : ""}<small>drag up or down</small>`); placeTip(); return;
   }
-  const cur = onPlane(h.at[1]); if (!cur) return;                      // a step back: follow the finger inward
-  const b = hd.b, raw = V.dot(V.sub(cur, hd.grab), h.n), inset = ui.free ? Math.round(raw * 10) / 10 : town.stepSnap(b, raw, h.mode);
+  const cur = onPlane(h.at[1]); if (!cur) return;
+  if (h.kind === "move") { moveBlock(V.sub(cur, hd.grab)); return; }
+  const b = hd.b, raw = V.dot(V.sub(cur, hd.grab), h.n), inset = ui.free ? Math.round(raw * 10) / 10 : town.stepSnap(b, raw, h.mode);   // a step back: follow the finger inward
   hd.inset = inset;
-  if (inset < 0.5) { ghost(null); tip("<small>drag inward to step back</small>"); return; }
+  if (inset < 0.5) { ghost(null); hd.t = null; tip("<small>drag inward to step back</small>"); placeTip(); return; }
   const t = town.terracePts(b, inset, h.mode, h.k); hd.t = t;
   ghost({ id: -1, pts: t.pts, closed: b.closed, D: t.D, fl: 3, fin: b.fin, seed: 1, parent: b.id });
-  tip(`step in ${+t.inset.toFixed(1)} m<small>${h.mode === "side" || h.mode === "corner" ? `${+t.D.toFixed(1)} m wide · ` : ""}release to build it</small>`);
+  tip(`step in ${+t.inset.toFixed(1)} m<small>${h.mode === "side" || h.mode === "corner" ? `${+t.D.toFixed(1)} m wide · ` : ""}release, then place it</small>`); placeTip();
+}
+// moving the block in hand by raw (m): on a roof it snaps flush or centred on it; on the ground it lines up with the
+// blocks around (and the grid), as a new block's corner does
+function moveBlock(raw) {
+  const b0 = hd.b0, P = b0.parent && now.S.blocks.find((x) => x.id === b0.parent), straight = (x) => x && !x.closed && x.pts.length === 2;
+  let delta = raw, why = "", guides = [];
+  if (!ui.free) {
+    if (straight(P) && straight(b0)) { const r = town.tierMove(b0, P, raw, tolAt(V.add(b0.pts[0], raw), hd.h.at[1])); delta = r.delta; why = r.why; }
+    else {
+      const D = b0.D || 12, u = V.norm(V.sub(b0.pts[1], b0.pts[0])), ref = b0.closed ? V.mul(b0.pts.reduce((a, q) => V.add(a, q), [0, 0]), 1 / b0.pts.length) : V.sub(b0.pts[0], V.mul(V.left(u), D / 2));
+      const sp = snapPoint(V.add(ref, raw), hd.h.at[1], b0.id); delta = V.sub(sp.p, ref); guides = sp.guides; why = [...new Set(guides.map((x) => x.why).filter(Boolean))].join(" · ");
+    }
+  }
+  const step = V.sub(delta, hd.applied); if (V.len(step) > 1e-6) { town.translate(b0.id, step); hd.applied = delta; rebuild(); }
+  showGuides(guides, hd.h.at[1]);
+  tip(`move${why ? " · " + why : ""}<small>Done when it is right</small>`); placeTip();
 }
 function endHandle() {
   const x = hd; hd = null; if (!x) return;
-  if (x.h.kind === "push" || x.h.kind === "pull") { release(); return; }
-  if (x.h.kind === "floors") { if (x.b.fl !== x.fl0) pushUndo(x.before); tip(""); return; }
-  ghost(null); tip("");
-  if (x.inset >= 0.5 && x.t) {                     // the step back is built as a block on the roof, three floors, and selected
-    const b = x.b, nb = { id: now.S.nextId, pts: x.t.pts, closed: b.closed, D: x.t.D, fl: 3, fin: ui.fin === "random" ? b.fin : ui.fin, seed: seed(), parent: b.id };
-    edit((S) => { S.blocks.push(nb); S.nextId++; }); select(nb.id);
+  if (x.h.kind === "push" || x.h.kind === "pull") { release(); if (x.h.kind === "pull" && !now.sel) cv = null; return; }
+  if (x.h.kind === "edge" || x.h.kind === "move" && ui.tool === "carve") return;
+  if (x.h.kind === "floors") { if (x.b.fl !== x.fl0) pushUndo(x.before); return; }
+  if (x.h.kind === "move") { showGuides([]); if (V.len(x.applied) > 1e-6) pushUndo(x.before); return; }
+  ghost(null);
+  if (x.inset >= 0.5 && x.t) {                     // the step back: a block on the roof, three floors, now being placed
+    const b = x.b; finishPlace();
+    placeNew({ id: now.S.nextId, pts: x.t.pts, closed: b.closed, D: x.t.D, fl: 3, fin: ui.fin === "random" ? b.fin : ui.fin, seed: seed(), parent: b.id });
   }
 }
 function abortHandle() {
   const x = hd; hd = null; if (!x) return;
   if (x.h.kind === "push" || x.h.kind === "pull") { abortPress(); return; }
-  ghost(null); tip(""); if (x.h.kind === "floors" && x.b.fl !== x.fl0) applyState(x.before);
+  if (x.h.kind === "edge" || x.h.kind === "move" && ui.tool === "carve") { setSel(x.s0); return; }
+  ghost(null); showGuides([]);
+  if ((x.h.kind === "floors" && x.b.fl !== x.fl0) || (x.h.kind === "move" && V.len(x.applied) > 1e-6)) applyState(x.before);
 }
 
 // the badges: one sprite each, its own material (each turns its arrow its own way)
-const hud = new THREE.Group(); hud.renderOrder = 1001; overlayRoot.add(hud);
+const hud = new THREE.Group(); overlayRoot.add(hud);
 function badge(kind) {
   const c = document.createElement("canvas"); c.width = c.height = 128; const x = c.getContext("2d");
-  const fill = { push: "#ffffff", pull: "#ffd75e", floors: "#ffd75e", step: "#7ad8ff" }[kind];
+  const fill = { push: "#ffffff", edge: "#ffffff", move: "#ffffff", pull: "#ffd75e", floors: "#ffd75e", step: "#7ad8ff" }[kind];
   x.beginPath(); x.arc(64, 64, 54, 0, Math.PI * 2); x.fillStyle = fill; x.globalAlpha = 0.92; x.fill(); x.globalAlpha = 1;
   x.lineWidth = 6; x.strokeStyle = "rgba(20,22,26,.75)"; x.stroke(); x.fillStyle = "#1c1f24";
-  if (kind === "floors") { x.beginPath(); x.moveTo(64, 18); x.lineTo(92, 54); x.lineTo(36, 54); x.fill(); x.beginPath(); x.moveTo(64, 110); x.lineTo(92, 74); x.lineTo(36, 74); x.fill(); }
+  const tri = (ax, ay, bx, by, cx, cy) => { x.beginPath(); x.moveTo(ax, ay); x.lineTo(bx, by); x.lineTo(cx, cy); x.fill(); };
+  if (kind === "floors") { tri(64, 18, 92, 54, 36, 54); tri(64, 110, 92, 74, 36, 74); }
+  else if (kind === "move") { tri(64, 14, 84, 38, 44, 38); tri(64, 114, 84, 90, 44, 90); tri(14, 64, 38, 44, 38, 84); tri(114, 64, 90, 44, 90, 84); x.fillRect(56, 36, 16, 56); x.fillRect(36, 56, 56, 16); }
   else if (kind === "step") { x.lineWidth = 13; x.lineCap = "round"; x.lineJoin = "round"; x.beginPath(); x.moveTo(52, 34); x.lineTo(82, 64); x.lineTo(52, 94); x.strokeStyle = "#1c1f24"; x.stroke(); }
   else { x.beginPath(); x.moveTo(104, 64); x.lineTo(66, 30); x.lineTo(66, 50); x.lineTo(26, 50); x.lineTo(26, 78); x.lineTo(66, 78); x.lineTo(66, 98); x.closePath(); x.fill(); }
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
@@ -206,32 +262,36 @@ function badge(kind) {
 const TEX = {}, pool = [];
 function sprite(i, kind) {
   while (pool.length <= i) { const s = new THREE.Sprite(new THREE.SpriteMaterial({ depthTest: false, depthWrite: false, sizeAttenuation: false, fog: false })); s.renderOrder = 1001; hud.add(s); pool.push(s); }
-  const s = pool[i]; s.material.map = TEX[kind] ||= badge(kind); s.material.needsUpdate = true; s.visible = true; return s;
+  const s = pool[i]; if (s.material.map !== (TEX[kind] ||= badge(kind))) { s.material.map = TEX[kind]; s.material.needsUpdate = true; } s.visible = true; return s;
 }
 let selMesh = null, selKey = "";
+const tmp = new THREE.Vector3();
 function drawHud() {
   layoutHandles();
-  const k = Math.tan((camera.fov * Math.PI) / 360) * 2 / innerHeight;
+  const k = Math.tan((camera.fov * Math.PI) / 360) * 2 / innerHeight; let n = 0;
   pool.forEach((s) => (s.visible = false));
-  shown.keep.forEach((i, n) => {
-    const h = shown.list[i], s = sprite(n, h.kind), active = hd && hd.h === h;
-    s.position.set(...h.at); s.scale.setScalar(HANDLE_PX * (active ? 1.2 : 1) * k);
-    if (h.dir) { const a = screenOf(...h.at), b = screenOf(h.at[0] + h.dir[0] * 3, h.at[1], h.at[2] + h.dir[1] * 3); s.material.rotation = Math.atan2(-(b[1] - a[1]), b[0] - a[0]); }
+  shown.list.forEach((h, i) => {
+    const q = shown.pts[i]; if (!q) return;
+    const s = sprite(n++, h.kind), active = hd && hd.h === h, z = tmp.set(...h.at).project(camera).z;
+    s.position.set((q[0] / innerWidth) * 2 - 1, -(q[1] / innerHeight) * 2 + 1, z).unproject(camera);          // the spot on screen, at the anchor's depth
+    s.scale.setScalar(HANDLE_PX * (active ? 1.2 : 1) * k);                                              // (sizeAttenuation off: a fixed size on screen)
+    if (h.dir) { const a = project(h.at), b = project(h.at.map((v, j) => v + h.dir[j] * 3)); s.material.rotation = a && b ? Math.atan2(-(b[1] - a[1]), b[0] - a[0]) : 0; }
     else s.material.rotation = 0;
   });
-  // the selected block, or the chosen panels, tinted
-  const b = ui.tool === "line" ? selBlock() : null, sl = ui.tool === "carve" && !(now.action && now.action.kind === "pull") ? now.sel : null;
-  const key = document.body.classList.contains("clean") ? "" : b ? `b${b.id}:${JSON.stringify(layOf(b.id) && [b.pts, b.D, b.fl, b.cuts])}` : sl ? `s${JSON.stringify([sl.b.id, sl.wall, sl.k0, sl.k1, sl.f0, sl.f1])}` : "";
+  // the block in hand, or the choice of panels, tinted (yellow while it is being placed)
+  const b = ui.tool === "line" ? blkBlock() : null, sl = ui.tool === "carve" && cv && !(now.action && now.action.kind === "pull") ? now.sel : null;
+  const key = document.body.classList.contains("clean") ? "" : b ? `b${b.id}:${blk.phase}:${JSON.stringify([b.pts, b.D, b.fl, b.cuts])}` : sl ? `s${JSON.stringify([sl.b.id, sl.wall, sl.k0, sl.k1, sl.f0, sl.f1])}` : "";
   if (key !== selKey) {
     selKey = key; if (selMesh) { hud.remove(selMesh); selMesh.geometry.dispose(); selMesh = null; }
-    if (b && key) { const lay = layOf(b.id); if (lay) selMesh = kit.overlay(lay, OV.edge, 0.65); }
+    if (b && key) { const lay = layOf(b.id); if (lay) selMesh = kit.overlay(lay, blk.phase === "place" ? OV.build : OV.edge, 0.65); }
     else if (sl && key) selMesh = selOverlay(sl, OV.edge);
     if (selMesh) hud.add(selMesh);
   }
 }
 on("frame", () => {
   if (now.input !== "touch") return;
-  if (selId != null && (!selBlock() || ui.tool !== "line")) select(null);
+  if (blk && (!blkBlock() || ui.tool !== "line")) { if (ui.tool !== "line") finishPlace(); blk = null; status(); }
+  if (cv && (ui.tool !== "carve" || !now.sel)) { cv = null; status(); }
   drawHud();
 });
 
@@ -267,22 +327,34 @@ function cameraTwo(a, b) {                         // slide, pinch and twist at 
   controls.update();
 }
 
+
 // ---------------------------------------------------------------- the round buttons on the right
+// a curve or ring between steps: Done, Cancel · a block being placed: Done, Cancel · selected: Done, Delete
+// a choice of panels: Next, Cancel · the arrow: Cancel
 function updateTouchbar() {
-  const d = now.draft, busy = !!(d && d.stage !== "base"), b = ui.tool === "line" && selBlock(), sl = ui.tool === "carve" && now.sel;
-  $("#t-done").style.display = busy || b ? "" : "none";
-  $("#t-del").style.display = b && !busy ? "" : "none";
-  $("#t-cancel").style.display = (d || sl) && !b ? "" : "none";
+  const d = now.draft, busy = !!(d && d.stage !== "base"), b = ui.tool === "line" && blkBlock();
+  const done = busy || b || cv === "choose", del = !busy && b && blk.phase === "select", can = (d && !b) || (b && blk.phase === "place") || cv;
+  $("#t-done").style.display = done ? "" : "none"; $("#t-done").textContent = cv === "choose" && !busy ? "Next" : "Done";
+  $("#t-del").style.display = del ? "" : "none";
+  $("#t-cancel").style.display = can ? "" : "none";
 }
-on("tip", updateTouchbar);
+on("tip", () => { updateTouchbar(); if (now.input === "touch" && (blk || cv) && !now.draft) placeTip(); });
 $("#t-done").onclick = () => {
   const d = now.draft;
   if (d) { if (d.stage === "height") commitDraft(); else if (d.stage === "bend" || d.stage === "place") { d.drag = null; startHeight(); updateDraft(); } showHover(); }
-  else select(null);
-  updateTouchbar();
+  else if (cv === "choose") cv = "pull";
+  else if (blk && blk.phase === "place") finishPlace();
+  else letGo();
+  status();
 };
-$("#t-del").onclick = () => { const b = selBlock(); if (!b) return; edit(() => town.demolish(b.id)); select(null); };
-$("#t-cancel").onclick = () => { cancel(); setSel(null); showHover(); updateTouchbar(); };
+$("#t-del").onclick = () => { const b = blkBlock(); if (!b) return; edit(() => town.demolish(b.id)); blk = null; status(); };
+$("#t-cancel").onclick = () => {
+  if (blk && blk.phase === "place") cancelPlace();
+  else if (cv) { setSel(null); cv = null; }
+  else { cancel(); showHover(); }
+  status();
+};
+$("#sub").addEventListener("click", () => setTimeout(status));      // (Build out / Dig switched: the tip says so)
 
 // ---------------------------------------------------------------- rows that scroll sideways: fade the edge that has more
 function fades(el) {
@@ -292,5 +364,8 @@ function fades(el) {
 fades($("#bar")); fades($("#sub"));
 $("#bar").addEventListener("click", (e) => { const t = e.target.closest(".tool"); if (t) t.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" }); });
 
-// for the tests: the handles on screen now
-window.__touch = { handles: () => { layoutHandles(); return shown.keep.map((i) => ({ kind: shown.list[i].kind, mode: shown.list[i].mode || shown.list[i].wall?.mode, s: shown.list[i].wall?.s, end: shown.list[i].wall?.end, k: shown.list[i].k, at: shown.pts[i] })); }, selected: () => selId };
+// for the tests: the handles on screen now, and what is in hand
+window.__touch = {
+  handles: () => { layoutHandles(); return shown.list.map((h, i) => ({ kind: h.kind, mode: h.mode || h.wall?.mode, s: h.wall?.s, end: h.wall?.end, k: h.k, edge: h.edge, at: shown.pts[i] })).filter((h) => h.at); },
+  held: () => blk && { ...blk, before: undefined }, stage: () => cv, sel: () => now.sel && [now.sel.k0, now.sel.k1, now.sel.f0, now.sel.f1],
+};

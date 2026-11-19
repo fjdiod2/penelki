@@ -28,7 +28,7 @@
   "dist_same": true
  },
  {
-  "step": "tap places a block",
+  "step": "tap places a block, being placed",
   "blocks": [
    {
     "id": 1,
@@ -39,20 +39,32 @@
     "at": null
    }
   ],
-  "selected": 1,
+  "held": {
+   "id": 1,
+   "phase": "place",
+   "before": null,
+   "mark": 0
+  },
   "buttons": {
    "t-done": true,
-   "t-del": true,
-   "t-cancel": false
+   "t-del": false,
+   "t-cancel": true
   },
   "handles": [
    "floors",
-   "pushlength",
-   "pushlength",
-   "pushwidth",
-   "stepend",
-   "stepend",
-   "stepside"
+   "move",
+   "push/length",
+   "push/length",
+   "push/width",
+   "push/width"
+  ],
+  "tip": "place it | drag the middle to move it \u00b7 the arrows for its walls and floors \u00b7 Done"
+ },
+ {
+  "step": "drag the middle: it moves",
+  "start": [
+   -6,
+   0
   ]
  },
  {
@@ -60,7 +72,7 @@
   "blocks": [
    {
     "id": 1,
-    "fl": 12,
+    "fl": 11,
     "D": 12,
     "L": 25.6,
     "parent": null,
@@ -73,8 +85,8 @@
   "blocks": [
    {
     "id": 1,
-    "fl": 12,
-    "D": 21,
+    "fl": 11,
+    "D": 24,
     "L": 25.6,
     "parent": null,
     "at": null
@@ -82,12 +94,73 @@
   ]
  },
  {
-  "step": "step back from an end",
+  "step": "Done: built, still selected",
+  "held": {
+   "id": 1,
+   "phase": "select",
+   "before": null,
+   "mark": 0
+  },
+  "buttons": {
+   "t-done": true,
+   "t-del": true,
+   "t-cancel": false
+  },
+  "handles": [
+   "floors",
+   "push/length",
+   "push/width",
+   "push/width",
+   "step/corner",
+   "step/end",
+   "step/end",
+   "step/side",
+   "step/side"
+  ]
+ },
+ {
+  "step": "one Undo takes the whole placement back",
+  "blocks": []
+ },
+ {
+  "step": "Redo brings it back",
   "blocks": [
    {
     "id": 1,
-    "fl": 12,
-    "D": 21,
+    "fl": 11,
+    "D": 24,
+    "L": 25.6,
+    "parent": null,
+    "at": null
+   }
+  ]
+ },
+ {
+  "step": "tap it: selected",
+  "held": {
+   "id": 1,
+   "phase": "select",
+   "before": null
+  },
+  "handles": [
+   "floors",
+   "push/length",
+   "push/width",
+   "push/width",
+   "step/corner",
+   "step/end",
+   "step/end",
+   "step/side",
+   "step/side"
+  ]
+ },
+ {
+  "step": "step back from an end: the tier is being placed",
+  "blocks": [
+   {
+    "id": 1,
+    "fl": 11,
+    "D": 24,
     "L": 25.6,
     "parent": null,
     "at": null
@@ -95,60 +168,63 @@
    {
     "id": 2,
     "fl": 3,
-    "D": 21,
+    "D": 24,
     "L": 16,
     "parent": 1,
     "at": null
    }
   ],
-  "selected": 2
+  "held": {
+   "id": 2,
+   "phase": "place",
+   "before": null,
+   "mark": 1
+  },
+  "buttons": {
+   "t-done": true,
+   "t-del": false,
+   "t-cancel": true
+  }
  },
  {
-  "step": "Delete removes the selected tier",
+  "step": "move the tier on the roof",
+  "moved": true
+ },
+ {
+  "step": "Cancel: no tier",
   "blocks": [
    {
     "id": 1,
-    "fl": 12,
-    "D": 21,
+    "fl": 11,
+    "D": 24,
     "L": 25.6,
     "parent": null,
     "at": null
    }
   ],
-  "buttons": {
-   "t-done": false,
-   "t-del": false,
-   "t-cancel": false
-  }
+  "held": null
  },
  {
-  "step": "tap the block again: selected",
-  "selected": 1
- },
- {
-  "step": "tap its roof: a block on top",
+  "step": "step back again, Done, Done: built and let go",
   "blocks": [
    {
     "id": 1,
-    "fl": 12,
-    "D": 21,
+    "fl": 11,
+    "D": 24,
     "L": 25.6,
     "parent": null,
     "at": null
    },
    {
-    "id": 3,
+    "id": 2,
     "fl": 3,
-    "D": 12,
-    "L": 12.8,
+    "D": 24,
+    "L": 16,
     "parent": 1,
     "at": null
    }
-  ]
- },
- {
-  "step": "tap away: let go",
-  "selected": null,
+  ],
+  "held": null,
   "buttons": {
    "t-done": false,
    "t-del": false,
@@ -156,48 +232,160 @@
   }
  },
  {
-  "step": "tap two panels",
-  "tip": "3 \u00d7 2 panels | drag the arrow out to build",
+  "step": "tap the block: selected",
+  "held": {
+   "id": 1,
+   "phase": "select",
+   "before": null
+  }
+ },
+ {
+  "step": "Delete",
+  "blocks": [],
+  "held": null
+ },
+ {
+  "step": "tap the ground: a new block",
+  "blocks": [
+   {
+    "id": 3,
+    "fl": 5,
+    "D": 12,
+    "L": 25.6,
+    "parent": null,
+    "at": null
+   }
+  ],
+  "held": {
+   "id": 3,
+   "phase": "place",
+   "before": null,
+   "mark": 3
+  }
+ },
+ {
+  "step": "tap away: built and let go",
+  "held": null,
   "buttons": {
    "t-done": false,
+   "t-del": false,
+   "t-cancel": false
+  }
+ },
+ {
+  "step": "tap a panel: a choice",
+  "stage": "choose",
+  "tip": "1 \u00d7 1 panel | drag the edges to stretch it, the middle to move it \u00b7 Next",
+  "buttons": {
+   "t-done": true,
    "t-del": false,
    "t-cancel": true
   },
   "handles": [
-   "pull"
+   "f0",
+   "f1",
+   "k0",
+   "k1",
+   "move"
   ]
+ },
+ {
+  "step": "handles at",
+  "hs": [
+   [
+    "k1",
+    [
+     102,
+     487
+    ]
+   ],
+   [
+    "k0",
+    [
+     29,
+     483
+    ]
+   ],
+   [
+    "f1",
+    [
+     51,
+     415
+    ]
+   ],
+   [
+    "f0",
+    [
+     55,
+     530
+    ]
+   ],
+   [
+    "move",
+    [
+     115,
+     434
+    ]
+   ]
+  ],
+  "sel": [
+   1,
+   1,
+   1,
+   1
+  ]
+ },
+ {
+  "step": "stretch it right",
+  "sel": [
+   1,
+   3,
+   1,
+   1
+  ]
+ },
+ {
+  "step": "stretch it up",
+  "sel": [
+   1,
+   3,
+   1,
+   3
+  ],
+  "tip": "3 \u00d7 3 panels | drag the edges to stretch it, the middle to move it \u00b7 Next"
+ },
+ {
+  "step": "Next: the arrow",
+  "stage": "pull",
+  "handles": [
+   "pull"
+  ],
+  "tip": "3 \u00d7 3 panels | drag the arrow out to build"
  },
  {
   "step": "drag the arrow out",
   "blocks": [
    {
-    "id": 1,
-    "fl": 12,
-    "D": 21,
+    "id": 3,
+    "fl": 5,
+    "D": 12,
     "L": 25.6,
     "parent": null,
     "at": null
    },
    {
-    "id": 3,
-    "fl": 3,
-    "D": 12,
-    "L": 12.8,
-    "parent": 1,
-    "at": null
-   },
-   {
     "id": 4,
-    "fl": 2,
-    "D": 8,
+    "fl": 3,
+    "D": 9.6,
     "L": 9.6,
     "parent": null,
     "at": {
-     "id": 1,
+     "id": 3,
      "f": 1
     }
    }
-  ]
+  ],
+  "stage": null
  },
  {
   "step": "trees with one finger",

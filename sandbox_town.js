@@ -138,5 +138,27 @@ export function createTown(dims, state) {
     return { id: state().nextId, pts: [a, V.add(a, V.mul(u, len))], closed: false, D: d, fl, fin: fin || P.fin, seed, parent: P.id };
   }
 
-  return { stepSnap, newBlock, roofBlock, byId, reindex, isGround, baseOf, topOf, floorY, subtree, demolish, holeAt, holeEdgeAt, inSign, terracePts, wallFrame, cellAt, selBox, extrudeBlock, digCut, pullDepth };
+  // moving block b0 (before the move) by a drag of delta on the roof of P (straight, its walls parallel or square to
+  // P's): along P in whole panels of P, across in half end-wall panels, unless it comes within tol of flush with an
+  // edge of the roof or centred on it. -> { delta, why }
+  function tierMove(b0, P, delta, tol) {
+    const F = frame(P), m = F.L / Math.max(1, Math.round(F.L / W)), D = b0.D || 12, u = V.norm(V.sub(b0.pts[1], b0.pts[0])), lf = V.left(u);
+    const corners = [b0.pts[0], b0.pts[1]].flatMap((p) => [V.add(p, V.mul(lf, D / 2)), V.sub(p, V.mul(lf, D / 2))]).map((p) => local(P, p));
+    const s0 = Math.min(...corners.map((c) => c[0])), len = Math.max(...corners.map((c) => c[0])) - s0;
+    const w0 = Math.min(...corners.map((c) => c[1])), wid = Math.max(...corners.map((c) => c[1])) - w0;
+    const ds = V.dot(delta, F.u), dw = V.dot(delta, F.lf), whys = [];
+    const snap = (v, cands, step, base) => { let best = null; for (const [c, why] of cands) if (Math.abs(c - v) < tol && (!best || Math.abs(c - v) < Math.abs(best[0] - v))) best = [c, why];
+      if (best) { whys.push(best[1]); return best[0]; } return base + Math.round((v - base) / step) * step; };
+    const ns = snap(s0 + ds, [[0, "flush"], [F.L - len, "flush"], [(F.L - len) / 2, "centred"]], m, 0);
+    const nw = snap(w0 + dw, [[-F.D / 2, "flush"], [F.D / 2 - wid, "flush"], [-wid / 2, "centred"]], E4 / 2, -F.D / 2);
+    return { delta: V.add(V.mul(F.u, ns - s0), V.mul(F.lf, nw - w0)), why: [...new Set(whys)].join(" · ") };
+  }
+  // move a block and everything standing on it or built out of it
+  function translate(id, delta) {
+    const S = state(), ids = subtree(id);
+    for (const b of S.blocks) if (ids.has(b.id)) b.pts = b.pts.map((p) => V.add(p, delta));
+    for (const t of S.trees) if (t.b && ids.has(t.b)) { t.x += delta[0]; t.z += delta[1]; }
+  }
+
+  return { tierMove, translate, stepSnap, newBlock, roofBlock, byId, reindex, isGround, baseOf, topOf, floorY, subtree, demolish, holeAt, holeEdgeAt, inSign, terracePts, wallFrame, cellAt, selBox, extrudeBlock, digCut, pullDepth };
 }

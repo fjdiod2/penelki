@@ -100,26 +100,20 @@ function rebuild() {
 // Roads are straight lines of a width (S.roads: { id, pts: [a, b], w }); their surfaces, kerbs, and the lamps, poles,
 // wires and parked cars along them (sandbox_streets.js) are made again whenever the roads or the blocks change.
 const streetRoot = new THREE.Group(); scene.add(streetRoot);
-const asphalt = new THREE.TextureLoader().load("./assets/asphalt.jpg"); asphalt.wrapS = asphalt.wrapT = THREE.RepeatWrapping; asphalt.colorSpace = THREE.SRGBColorSpace; asphalt.anisotropy = 8;
-const roadMat = new THREE.MeshBasicMaterial({ map: asphalt, color: 0x8f8f8c, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
-const kerbMat = new THREE.MeshBasicMaterial({ vertexColors: true }), wireMat = new THREE.LineBasicMaterial({ color: 0x262626 });
+const wireMat = new THREE.LineBasicMaterial({ color: 0x262626 });
 const ROAD_Y = 0.05;
-function roadMesh(list, all, mat = roadMat) {         // the surfaces (and kerbs) of the roads in list, among all
-  const pos = [], uv = [], idx = [], kp = [], kc = [], ki = [];
+function roadMesh(list, all, mat = ground.roadMat) {   // the surfaces and kerbs of the roads in list, among all, as one mesh
+  const pos = [], rk = [], idx = [], quad = (ps, ys, ks, y) => { const o = pos.length / 3; ps.forEach((p, n) => { pos.push(p[0], ys[n], p[1]); rk.push(ks[n], y); }); idx.push(o, o + 2, o + 1, o, o + 3, o + 2, o, o + 1, o + 2, o, o + 2, o + 3); };
   for (const r of list) {
-    const q = roadQuad(r, all), o = pos.length / 3;
-    for (const c of q) { pos.push(c[0], ROAD_Y, c[1]); uv.push(c[0] / 5, c[1] / 5); } idx.push(o, o + 2, o + 1, o, o + 3, o + 2);
-    for (const [a, b] of kerbs(r, all)) {             // a kerb: its top and both sides, a weathered concrete grey
-      const d = V.norm(V.sub(b, a)), n = V.mul(V.left(d), KERB.w / 2), A = V.add(a, n), B = V.add(b, n), C = V.sub(b, n), Dd = V.sub(a, n), h = KERB.h;
-      for (const [quad, col] of [[[[A, h], [B, h], [C, h], [Dd, h]], 0.36], [[[A, 0], [B, 0], [B, h], [A, h]], 0.24], [[[Dd, h], [C, h], [C, 0], [Dd, 0]], 0.24]]) {
-        const k = kp.length / 3; for (const [pp, y] of quad) { kp.push(pp[0], y, pp[1]); kc.push(col, col, col * 0.97); } ki.push(k, k + 1, k + 2, k, k + 2, k + 3, k, k + 2, k + 1, k, k + 3, k + 2);
-      }
+    const q = roadQuad(r, all); quad(q, [ROAD_Y, ROAD_Y, ROAD_Y, ROAD_Y], [1, 1, -1, -1], -r.w);   // (rk: across, -width)
+    for (const [a, b] of kerbs(r, all)) {             // a kerb: its top and both sides; rk.x counts metres along it (1 m stones)
+      const d = V.norm(V.sub(b, a)), n = V.mul(V.left(d), KERB.w / 2), A = V.add(a, n), B = V.add(b, n), C = V.sub(b, n), Dd = V.sub(a, n), h = KERB.h, s0 = V.dot(a, d), s1 = V.dot(b, d);
+      quad([A, B, C, Dd], [h, h, h, h], [s0, s1, s1, s0], 1);
+      quad([A, B, B, A], [0, 0, h, h], [s0, s1, s1, s0], 0.6); quad([Dd, C, C, Dd], [h, h, 0, 0], [s0, s1, s1, s0], 0.6);
     }
   }
-  const g = new THREE.Group(), geo = new THREE.BufferGeometry(); geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3)); geo.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2)); geo.setIndex(idx);
-  g.add(new THREE.Mesh(geo, mat));
-  if (kp.length) { const kg = new THREE.BufferGeometry(); kg.setAttribute("position", new THREE.Float32BufferAttribute(kp, 3)); kg.setAttribute("color", new THREE.Float32BufferAttribute(kc, 3)); kg.setIndex(ki); g.add(new THREE.Mesh(kg, kerbMat)); }
-  return g;
+  const geo = new THREE.BufferGeometry(); geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3)); geo.setAttribute("rk", new THREE.Float32BufferAttribute(rk, 2)); geo.setIndex(idx);
+  const g = new THREE.Group(); g.add(new THREE.Mesh(geo, mat)); return g;
 }
 let streetKey = "", streetObj = null;
 function rebuildStreets(force = false) {

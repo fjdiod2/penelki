@@ -91,13 +91,7 @@ export function createGround(scene, fog, sky) {
     const t = new THREE.CanvasTexture(c); t.flipY = false; t.colorSpace = THREE.NoColorSpace; return { c, ctx, t, px: null }; });
   const TL = new THREE.TextureLoader(), tile = (u) => { const t = TL.load(u); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 8; return t; };
   const F = "./assets/forest/";
-  const mat = new THREE.ShaderMaterial({
-    uniforms: { tGrass: { value: tile(F + "g_grass.jpg") }, tField: { value: tile(F + "g_field.jpg") }, tLitter: { value: tile(F + "g_litter.jpg") }, tGravel: { value: tile(F + "g_gravel.jpg") }, tMoss: { value: tile(F + "g_moss.jpg") },
-      tAsph: { value: tile("./assets/asphalt.jpg") }, tDirt: { value: tile("./assets/dirt.jpg") },
-      sA: { value: maps[0].t }, sB: { value: maps[1].t }, sC: { value: maps[2].t }, uHalf: { value: HALF }, fogC: { value: fog.color }, fogR: { value: new THREE.Vector2(fog.near, fog.far) } },
-    vertexShader: "varying vec3 vW; void main() { vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }",
-    fragmentShader: `uniform sampler2D tGrass; uniform sampler2D tField; uniform sampler2D tLitter; uniform sampler2D tGravel; uniform sampler2D tMoss; uniform sampler2D tAsph; uniform sampler2D tDirt;
-      uniform sampler2D sA; uniform sampler2D sB; uniform sampler2D sC; uniform float uHalf; uniform vec3 fogC; uniform vec2 fogR; varying vec3 vW;
+  const GLSL_TILE = `
       float h2(vec2 p) { p = fract(p * vec2(0.1031, 0.1030)); p += dot(p, p.yx + 33.33); return fract((p.x + p.y) * p.y); }
       float vn(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f); return mix(mix(h2(i), h2(i + vec2(1.0, 0.0)), f.x), mix(h2(i + vec2(0.0, 1.0)), h2(i + vec2(1.0, 1.0)), f.x), f.y); }
       // Stochastic (hex) tiling, the same as the simulator's ground (forest_gen.js): the plane is cut into a triangle grid,
@@ -112,6 +106,15 @@ export function createGround(scene, fog, sky) {
         return max(mean + c / sqrt(w1 * w1 + w2 * w2 + w3 * w3), 0.0);
       }
       vec3 tile(sampler2D t, vec2 p, float m, vec2 dx, vec2 dy) { vec3 mean = textureLod(t, p / m, 12.0).rgb; return stoch(t, p / m, dx / m, dy / m, mean); }
+`;
+  const mat = new THREE.ShaderMaterial({
+    uniforms: { tGrass: { value: tile(F + "g_grass.jpg") }, tField: { value: tile(F + "g_field.jpg") }, tLitter: { value: tile(F + "g_litter.jpg") }, tGravel: { value: tile(F + "g_gravel.jpg") }, tMoss: { value: tile(F + "g_moss.jpg") },
+      tAsph: { value: tile("./assets/asphalt.jpg") }, tDirt: { value: tile("./assets/dirt.jpg") },
+      sA: { value: maps[0].t }, sB: { value: maps[1].t }, sC: { value: maps[2].t }, uHalf: { value: HALF }, fogC: { value: fog.color }, fogR: { value: new THREE.Vector2(fog.near, fog.far) } },
+    vertexShader: "varying vec3 vW; void main() { vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }",
+    fragmentShader: `uniform sampler2D tGrass; uniform sampler2D tField; uniform sampler2D tLitter; uniform sampler2D tGravel; uniform sampler2D tMoss; uniform sampler2D tAsph; uniform sampler2D tDirt;
+      uniform sampler2D sA; uniform sampler2D sB; uniform sampler2D sC; uniform float uHalf; uniform vec3 fogC; uniform vec2 fogR; varying vec3 vW;
+      ${GLSL_TILE}
       // bog and reed pools (the simulator's poolS): metres inside the nearest pool, negative outside
       float poolS(vec2 pw, float w, float sc, vec2 off) {
         float amt = smoothstep(0.55, 0.95, w); if (amt < 0.01) return -9.0;
@@ -239,5 +242,34 @@ export function createGround(scene, fog, sky) {
     }
   }
   const update = (t) => { U.time.value = t; };
-  return { mesh, dab, grabAll, patch, put, clear, serialize, deserialize, sync, at, waterDepth, update, HALF, RES };
+  // the surface of roads (and their kerbs): dark worn asphalt, with patches, lighter wheel tracks and grime at the edges;
+  // kerbs of 1 m concrete stones. attribute rk: on a road x -1..1 across it and y = -its width; on a kerb x metres along
+  // it and y 1 (top) or 0.6 (side)
+  const roadMat = new THREE.ShaderMaterial({
+    uniforms: { tAsph: mat.uniforms.tAsph, fogC: { value: fog.color }, fogR: { value: new THREE.Vector2(fog.near, fog.far) } },
+    polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1,
+    vertexShader: "attribute vec2 rk; varying vec3 vW; varying vec2 vRk; void main() { vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xyz; vRk = rk; gl_Position = projectionMatrix * viewMatrix * w; }",
+    fragmentShader: `uniform sampler2D tAsph; uniform vec3 fogC; uniform vec2 fogR; varying vec3 vW; varying vec2 vRk;
+      ${GLSL_TILE}
+      void main() {
+        vec2 p = vW.xz, dx = dFdx(p), dy = dFdy(p); vec3 col;
+        if (vRk.y < 0.3) {
+          float w = max(-vRk.y, 1.0), x = abs(vRk.x) * w * 0.5;                         // metres from the centre line
+          vec3 t = tile(tAsph, p, 1.7, dx, dy); float l = dot(t, vec3(0.3, 0.6, 0.1));
+          col = mix(vec3(l), t, 0.3) * 0.62 * (0.9 + 0.2 * vn(p / 11.0 + 3.0));
+          col *= mix(1.0, 0.8, smoothstep(0.6, 0.64, vn(p / 7.0 + 11.0)));             // patched
+          float c1 = w >= 6.0 ? 1.0 : 0.75, c2 = w >= 6.0 ? 2.5 : 0.75;
+          float tr = exp(-pow((x - c1) / 0.35, 2.0)) + exp(-pow((x - c2) / 0.35, 2.0));
+          col *= 1.0 + 0.13 * min(tr, 1.0) * (0.6 + 0.4 * vn(p * 0.4));                 // polished where the wheels go
+          col *= mix(1.0, 0.78, smoothstep(w * 0.5 - 0.7, w * 0.5, x));                 // grime along the kerb
+        } else {
+          float st = floor(vRk.x), f = fract(vRk.x);
+          col = vec3(0.37, 0.36, 0.34) * (0.84 + 0.22 * vn(p * 2.3 + st * 7.1)) * (0.93 + 0.07 * vn(p * 23.0 + vW.y * 17.0)) * (0.86 + 0.24 * h2(vec2(st, 3.7)));
+          col *= mix(0.55, 1.0, smoothstep(0.0, 0.03, f) * smoothstep(1.0, 0.97, f));   // the joints between stones
+          col *= vRk.y > 0.9 ? 1.0 : 0.72;
+        }
+        gl_FragColor = vec4(mix(col, fogC, smoothstep(fogR.x, fogR.y, length(cameraPosition - vW))), 1.0);
+        #include <colorspace_fragment>
+      }` });
+  return { roadMat, mesh, dab, grabAll, patch, put, clear, serialize, deserialize, sync, at, waterDepth, update, HALF, RES };
 }

@@ -67,14 +67,16 @@ export function createClouds(renderer, fog) {
         t1 = min(t1, t0 + 4000.0);
         vec3 acc = vec3(0.0); float T = 1.0;
         if (t1 > t0) {
-          float dt = (t1 - t0) / float(steps), j = h2(gl_FragCoord.xy);   // (each pixel starts at its own spot along the way: no banding)
+          // steps of at most 50 m (a slanting look through the deck is long: farther than that it is hidden or hazed anyway);
+          // each pixel starts at its own spot along the way (interleaved gradient noise: even among neighbours, no banding)
+          float dt = min((t1 - t0) / float(steps), 50.0), j = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
           for (int i = 0; i < 64; i++) {
             if (i >= steps || T < 0.02) break;
             float t = t0 + (float(i) + j) * dt; vec3 p = camPos + dir * t; float k = dens(p);
             if (k > 0.001) {
               float a = 1.0 - exp(-k * 0.09 * dt), hgt = clamp((p.y - base) / thick, 0.0, 1.0);
               float lit = exp(-3.0 * dens(p + SUN * 45.0));                                    // how much cloud stands between it and the sun
-              vec3 c = mix(vec3(0.42, 0.44, 0.47), vec3(0.95, 0.95, 0.96), smoothstep(0.0, 1.0, hgt) * 0.5 + lit * 0.5) * (0.88 + 0.12 * k);
+              vec3 c = mix(vec3(0.55, 0.57, 0.6), vec3(0.95, 0.95, 0.96), smoothstep(0.0, 1.0, hgt) * 0.5 + lit * 0.5) * (0.88 + 0.12 * k);
               c = mix(c, fogC, smoothstep(fogR.x, fogR.y, t) * 0.85);             // far cloud is hazed too
               acc += T * a * c; T *= 1.0 - a;
             }
@@ -86,17 +88,17 @@ export function createClouds(renderer, fog) {
   // low-resolution pixels, each weighted by how near its depth is to this pixel's
   const comp = new THREE.ShaderMaterial({
     depthTest: false, depthWrite: false,
-    uniforms: { tColor: { value: null }, tDepth: { value: null }, tCloud: { value: null }, lowSize: { value: new THREE.Vector2() }, projInv: { value: new THREE.Matrix4() }, dim: { value: 0 } },
+    uniforms: { tColor: { value: null }, tDepth: { value: null }, tCloud: { value: null }, lowSize: { value: new THREE.Vector2() }, nf: { value: new THREE.Vector2() }, dim: { value: 0 } },
     vertexShader: "varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }",
     fragmentShader: `
-      uniform sampler2D tColor; uniform sampler2D tDepth; uniform sampler2D tCloud; uniform vec2 lowSize; uniform mat4 projInv; uniform float dim; varying vec2 vUv;
-      float distAt(vec2 uv) { float d = texture2D(tDepth, uv).x; if (d >= 1.0) return 9000.0; vec4 v = projInv * vec4(uv * 2.0 - 1.0, d * 2.0 - 1.0, 1.0); return length(v.xyz / v.w); }
+      uniform sampler2D tColor; uniform sampler2D tDepth; uniform sampler2D tCloud; uniform vec2 lowSize; uniform vec2 nf; uniform float dim; varying vec2 vUv;
+      float distAt(vec2 uv) { float d = texture2D(tDepth, uv).x; if (d >= 1.0) return 9000.0; float z = d * 2.0 - 1.0; return 2.0 * nf.x * nf.y / (nf.y + nf.x - z * (nf.y - nf.x)); }   // (depth along the view: cheap, and as good for comparing)
       void main() {
         vec3 scene = texture2D(tColor, vUv).rgb * (1.0 - dim); float D = distAt(vUv);
-        vec2 p = vUv * lowSize - 0.5, i0 = floor(p), f = p - i0; vec4 sum = vec4(0.0); float ws = 0.0;
-        for (int k = 0; k < 4; k++) {
-          vec2 o = vec2(float(k - (k / 2) * 2), float(k / 2)), uv = (i0 + o + 0.5) / lowSize;
-          float wb = (o.x > 0.5 ? f.x : 1.0 - f.x) * (o.y > 0.5 ? f.y : 1.0 - f.y), wd = exp(-abs(D - distAt(uv)) / (0.04 * D + 1.5)), w = wb * (wd + 1e-4);
+        vec2 p = vUv * lowSize - 0.5, i0 = floor(p + 0.5); vec4 sum = vec4(0.0); float ws = 0.0;
+        for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++) {            // the 3 x 3 nearest: smooths what is left of the stepping noise
+          vec2 c = i0 + vec2(float(x), float(y)), uv = (c + 0.5) / lowSize, dd = c - p;
+          float wb = exp(-dot(dd, dd) / 1.1), wd = exp(-abs(D - distAt(uv)) / (0.04 * D + 1.5)), w = wb * (wd + 1e-4);
           sum += w * texture2D(tCloud, uv); ws += w;
         }
         vec4 c = sum / max(ws, 1e-6);
@@ -114,7 +116,7 @@ export function createClouds(renderer, fog) {
     u.fogR.value.set(fog.near, fog.far);
     renderer.setRenderTarget(low); renderer.render(post, postCam);                       // the cloud, at low resolution
     const c = comp.uniforms; c.tColor.value = r.texture; c.tDepth.value = r.depthTexture; c.tCloud.value = low.texture; c.lowSize.value.set(low.width, low.height);
-    c.projInv.value.copy(camera.projectionMatrixInverse); c.dim.value = camera.position.y < state.base ? 0.22 * state.cover : 0;   // under a deck the day is dimmer
+    c.nf.value.set(camera.near, camera.far); c.dim.value = camera.position.y < state.base ? 0.22 * state.cover : 0;   // under a deck the day is dimmer
     quad.material = comp; renderer.setRenderTarget(null); renderer.render(post, postCam); quad.material = mat;
   }
   return { render, state };

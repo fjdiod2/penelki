@@ -6,7 +6,7 @@
 // their entrances face, joined to the nearest road; a playground where it is quietest; a kiosk where it meets a road.
 // The parked cars and lamps along the driveway, and the paths from the entrances, then come as for any road.
 import { V, rng, offsetPoly } from "./sandbox_blocks.js";
-import { onRoad, nearestOn } from "./sandbox_streets.js";
+import { onRoad, nearestOn, loopOf } from "./sandbox_streets.js";
 import { inBlock, PORCH } from "./sandbox_details.js";
 
 export const CELL = 2, REACH = 40, RADIUS = 120, DRIVE_W = 4, DRIVE_OFF = 9;
@@ -69,10 +69,10 @@ export function yardLayout(Y, ctx) {
     (groups.get(k) || groups.set(k, []).get(k)).push(e);
   }
   let rid = 0;
-  const linkUp = (drive) => {                     // joined to the nearest road (the town's, or a driveway already made) from whichever end is nearer
-    const A = drive.pts[0], B = drive.pts[drive.pts.length - 1]; let link = null;
-    for (const end of [A, B]) for (const r of [...roads, ...out.filter((x) => x !== drive)]) {
-      const s = nearestOn(r.pts, end); if (s.d > 90 || s.d < 1) continue;
+  const linkUp = (drive) => {                     // joined to the nearest road (the town's, or a driveway already made) from whichever end is nearer (a loop: from anywhere on it)
+    const starts = drive.closed ? drive.pts : [drive.pts[0], drive.pts[drive.pts.length - 1]]; let link = null;
+    for (const end of starts) for (const r of [...roads, ...out.filter((x) => x !== drive)]) {
+      const s = nearestOn(loopOf(r), end); if (s.d > 90 || s.d < 1) continue;
       const dir = V.norm(V.sub(s.q, end)); if (!clearLine(V.add(end, V.mul(dir, 2)), V.sub(s.q, V.mul(dir, r.w / 2 + 0.5)))) continue;
       if (!link || s.d < link.d) link = { d: s.d, a: end, b: s.q };
     }
@@ -80,7 +80,7 @@ export function yardLayout(Y, ctx) {
   };
   for (const [b, es] of curved) {
     const d = curveDrive(b, es, Y, roads); if (!d) continue;
-    const drive = { id: 1e6 + id * 1000 + rid++, pts: d, w: DRIVE_W, yard: true }; out.push(drive); linkUp(drive);
+    const drive = { id: 1e6 + id * 1000 + rid++, pts: d.pts, w: DRIVE_W, yard: true, ...(d.closed ? { closed: true } : {}) }; out.push(drive); linkUp(drive);
   }
   for (const es of groups.values()) {
     const o = es[0].out, u = V.left(o), base = V.add(es[0].p, V.mul(o, DRIVE_OFF)), ss = es.map((e) => V.dot(V.sub(e.p, es[0].p), u));
@@ -97,7 +97,7 @@ export function yardLayout(Y, ctx) {
   const ed = edgeDist(Y); let best = null;
   for (let j = 0; j < Y.n; j++) for (let i = 0; i < Y.n; i++) {
     const k = j * Y.n + i; if (!Y.mask[k]) continue; const q = Y.centre(i, j);
-    let s = Math.min(ed[k], blockDist(q, blocks)); for (const r of allRoads) s = Math.min(s, nearestOn(r.pts, q).d - r.w / 2);
+    let s = Math.min(ed[k], blockDist(q, blocks)); for (const r of allRoads) s = Math.min(s, nearestOn(loopOf(r), q).d - r.w / 2);
     if (!best || s > best.s) best = { s, q };
   }
   if (best && best.s >= 7) {
@@ -123,27 +123,26 @@ export function yardLayout(Y, ctx) {
   return { roads: out, items };
 }
 
-// a driveway following a curved or round block b on its entrances' side, DRIVE_OFF m out: from a little before its
-// first entrance to a little past its last (round a ring: all the way but for the biggest gap between entrances),
-// only where it is in the yard and not on a road. -> its points, about every 3 m, or null
+// a driveway following a curved or round block b on its entrances' side, DRIVE_OFF m out: round a ring a loop, all the
+// way round, when all of it is in the yard and off the roads; else (and along a curved block) from a little before its
+// first entrance to a little past its last, only where it is in the yard and not on a road.
+// -> { pts (about every 3 m), closed } or null
 function curveDrive(b, es, Y, roads) {
   const D = b.D || 12, path = b.closed ? [...b.pts, b.pts[0]] : b.pts, n0 = nearestOn(path, es[0].p), u = V.norm(V.sub(path[n0.i + 1], path[n0.i]));
   const side = V.dot(es[0].out, V.left(u)) > 0 ? 1 : -1, line = offsetPoly(b.pts, b.closed, side * (D / 2 + DRIVE_OFF)), loop = b.closed ? [...line, line[0]] : line;
   const smp = [];                                 // the line, a point every metre
   for (let i = 0; i + 1 < loop.length; i++) { const a = loop[i], c = loop[i + 1], L = V.dist(a, c), k = Math.max(1, Math.round(L)); for (let j = 0; j < k; j++) smp.push(V.lerp(a, c, j / k)); }
   if (!b.closed) smp.push(loop[loop.length - 1]);
-  const N = smp.length, near = (p) => { let bi = 0, bd = Infinity; smp.forEach((q, i) => { const d = V.dist(q, p); if (d < bd) { bd = d; bi = i; } }); return bi; };
+  const N = smp.length, ok = smp.map((q) => Y.at(q) && !roads.some((r) => onRoad(q, r, roads, 0)));
+  const thin = (run) => { const pts = run.filter((_, i) => i % 3 === 0); if (pts[pts.length - 1] !== run[run.length - 1]) pts.push(run[run.length - 1]); return pts; };
+  if (b.closed && ok.every(Boolean)) return { pts: smp.filter((_, i) => i % 3 === 0), closed: true };
+  const near = (p) => { let bi = 0, bd = Infinity; smp.forEach((q, i) => { const d = V.dist(q, p); if (d < bd) { bd = d; bi = i; } }); return bi; };
   const at = es.map((e) => near(V.add(e.p, V.mul(e.out, D / 2 + DRIVE_OFF)))).sort((a, c) => a - c), M = 7;
   let keep;                                        // which samples, in order
   if (!b.closed) { const i0 = Math.max(0, at[0] - M), i1 = Math.min(N - 1, at[at.length - 1] + M); keep = []; for (let i = i0; i <= i1; i++) keep.push(i); }
-  else {
-    let gi = 0, gap = -1; at.forEach((v, k) => { const nx = k + 1 < at.length ? at[k + 1] : at[0] + N, g = nx - v; if (g > gap) { gap = g; gi = k; } });
-    const from = at[gi], cut = gap > 2 * M + 6 ? [from + M, from + gap - M] : [from + Math.floor(gap / 2) - 3, from + Math.floor(gap / 2) + 3];
-    keep = []; for (let i = cut[1]; i <= cut[0] + N; i++) keep.push(i % N);
-  }
+  else { const start = ok.indexOf(false); keep = []; for (let k = 1; k <= N; k++) keep.push((start + k) % N); }   // round the ring from a blocked spot
   let best = [], run = [];                        // the longest stretch inside the yard and off the roads
-  for (const i of [...keep, -1]) { const q = i >= 0 && smp[i]; if (q && Y.at(q) && !roads.some((r) => onRoad(q, r, roads, 0))) run.push(q); else { if (run.length > best.length) best = run; run = []; } }
+  for (const i of [...keep, -1]) { if (i >= 0 && ok[i]) run.push(smp[i]); else { if (run.length > best.length) best = run; run = []; } }
   if (best.length < 10) return null;
-  const pts = best.filter((_, i) => i % 3 === 0); if (pts[pts.length - 1] !== best[best.length - 1]) pts.push(best[best.length - 1]);
-  return pts;
+  return { pts: thin(best), closed: false };
 }

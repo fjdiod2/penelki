@@ -66,7 +66,8 @@ test("round a ring: one continuous driveway at a steady distance from the wall, 
   const drives = L.roads.filter((r) => r.pts.length > 2);
   assert.equal(drives.length, 1, `one driveway, got ${L.roads.length} roads`);
   const d = drives[0], r0 = 45 - 6 - DRIVE_OFF;
+  assert.ok(d.closed, "a loop, all the way round");
   for (const p of d.pts) assert.ok(Math.abs(V.len(p) - r0) < 0.6, `radius ${V.len(p).toFixed(2)}`);
   for (let i = 1; i < d.pts.length; i++) assert.ok(V.dist(d.pts[i - 1], d.pts[i]) < 3.5, "continuous");
-  const span = d.pts.slice(1).reduce((s, p, i) => s + V.dist(d.pts[i], p), 0); assert.ok(span > 0.7 * 2 * Math.PI * r0, `most of the way round: ${span.toFixed(0)} m`);
+  assert.ok(V.dist(d.pts[0], d.pts[d.pts.length - 1]) < 3.5, "closing up");
 });

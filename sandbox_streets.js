@@ -1,6 +1,7 @@
 // Панельки, roads: their shapes and what stands along them, as plain functions (no scene) so they can be tested in Node.
 // A road is a centre line { id, pts: [a, b, ...], w } (width in metres): a straight piece, or several straight pieces
-// one after another (a bend, a driveway round a ring), drawn as one strip with mitred joints and unbroken kerbs.
+// one after another (a bend), drawn as one strip with mitred joints and unbroken kerbs; or a loop (closed: true, as
+// the driveway round a ring's courtyard), with no ends at all.
 // Where roads meet, only one surface is drawn: at a T the side road stops at the edge of the road it joins; where two
 // roads meet end to end, one of them covers the corner and the other starts at its edge. The kerbs stop at junctions.
 import { V, rng, offsetPoly } from "./sandbox_blocks.js";
@@ -16,17 +17,19 @@ export function nearestOn(pts, p) {
   for (let i = 0; i + 1 < pts.length; i++) { const s = segDist(p, pts[i], pts[i + 1]), L = V.dist(pts[i], pts[i + 1]); if (!best || s.d < best.d) best = { ...s, i, s: acc + Math.max(0, Math.min(1, s.t)) * L }; acc += L; }
   return best;
 }
+export const loopOf = (r) => (r.closed ? [...r.pts, r.pts[0]] : r.pts);   // the centre line, closed up for a loop
 const endDir = (r, k) => (k === 0 ? V.norm(V.sub(r.pts[0], r.pts[1])) : V.norm(V.sub(r.pts[r.pts.length - 1], r.pts[r.pts.length - 2])));   // pointing out of the road
 
 // how far each end of road r reaches past its end point (negative: stops short of it): where it ends on another road's
 // side (a T), it stops at that road's edge; where it meets another road's end, the one with the lower id reaches over
 // the corner by the other's half width and the other stops at its edge -> [at the first point, at the last]
 export function endExt(r, roads) {
+  if (r.closed) return [0, 0];
   return [0, r.pts.length - 1].map((idx) => {
     const e = r.pts[idx]; let x = 0;
     for (const o of roads) {
-      if (o === r) continue; const n = nearestOn(o.pts, e); if (n.d > 0.1) continue;
-      const atEnd = V.dist(e, o.pts[0]) < 0.1 || V.dist(e, o.pts[o.pts.length - 1]) < 0.1;
+      if (o === r) continue; const n = nearestOn(loopOf(o), e); if (n.d > 0.1) continue;
+      const atEnd = !o.closed && (V.dist(e, o.pts[0]) < 0.1 || V.dist(e, o.pts[o.pts.length - 1]) < 0.1);
       if (!atEnd) x = Math.min(x, -o.w / 2);                          // a T: stop at its edge
       else x = r.id < o.id ? Math.max(x, o.w / 2) : Math.min(x, -o.w / 2);
     }
@@ -35,19 +38,24 @@ export function endExt(r, roads) {
 }
 // the centre line with its ends moved by endExt
 function extended(r, roads) {
+  if (r.closed) return loopOf(r);
   const [ea, eb] = endExt(r, roads), p = r.pts.map((q) => [...q]), n = p.length;
   p[0] = V.add(p[0], V.mul(endDir(r, 0), ea)); p[n - 1] = V.add(p[n - 1], V.mul(endDir(r, 1), eb)); return p;
 }
 // the road's surface: its two edges (left: V.left of the way the points run), point for point, and metres along it
 export function roadStrip(r, roads) {
-  const c = extended(r, roads), h = r.w / 2, left = offsetPoly(c, false, h), right = offsetPoly(c, false, -h), [ea] = endExt(r, roads), s = [-ea];
+  const c = extended(r, roads), h = r.w / 2, [ea] = endExt(r, roads), s = [-ea];
+  let left, right;
+  if (r.closed) { left = offsetPoly(r.pts, true, h); right = offsetPoly(r.pts, true, -h); left.push(left[0]); right.push(right[0]); }   // (mitred at the seam too)
+  else { left = offsetPoly(c, false, h); right = offsetPoly(c, false, -h); }
   for (let i = 1; i < c.length; i++) s.push(s[i - 1] + V.dist(c[i - 1], c[i]));
-  return { left, right, s, len: pathLen(r.pts) };
+  return { left, right, s, len: r.closed ? 1e6 : pathLen(r.pts) };     // (a loop has no ends for its markings to stop short of)
 }
 export function roadQuad(r, roads) { const { left, right } = roadStrip(r, roads); return [...left, ...[...right].reverse()]; }   // its outline
 // is p on the surface of road o (as drawn, with its ends moved)?
 export function onRoad(p, o, roads, margin = 0) {
   const c = extended(o, roads), n = nearestOn(c, p); if (!n || n.d >= o.w / 2 + margin) return false;
+  if (o.closed) return true;
   if (n.i === 0 && n.t < 0) return n.t * V.dist(c[0], c[1]) > -margin;                                   // square ends
   if (n.i === c.length - 2 && n.t > 1) return (n.t - 1) * V.dist(c[n.i], c[n.i + 1]) < margin;
   return true;
@@ -56,7 +64,8 @@ export function onRoad(p, o, roads, margin = 0) {
 export function kerbs(r, roads) {
   const c = extended(r, roads), others = roads.filter((o) => o !== r), out = [];
   for (const side of [1, -1]) {
-    const line = offsetPoly(c, false, side * (r.w / 2 + KERB.w / 2)); let run = null;
+    let line = offsetPoly(r.closed ? r.pts : c, !!r.closed, side * (r.w / 2 + KERB.w / 2)); if (r.closed) line = [...line, line[0]];
+    let run = null; const first = out.length;
     for (let i = 0; i + 1 < line.length; i++) {
       const a = line[i], b = line[i + 1], L = V.dist(a, b), n = Math.max(1, Math.ceil(L / 0.5));
       for (let k = i === 0 ? 0 : 1; k <= n; k++) {
@@ -65,6 +74,7 @@ export function kerbs(r, roads) {
       }
     }
     if (run && run.length > 1 && pathLen(run) > 0.2) out.push(run);
+    if (r.closed && out.length - first > 1 && V.dist(out[out.length - 1].at(-1), out[first][0]) < 0.6) out[first] = [...out.pop(), ...out[first].slice(1)];   // a run across the seam is one
   }
   return out;
 }
@@ -74,15 +84,15 @@ export function kerbs(r, roads) {
 export function snapToRoads(p, roads, tol, except = null) {           // except: a road, or a list of them, to leave out
   const skip = Array.isArray(except) ? except : except ? [except] : [];
   let best = null;
-  for (const o of roads) if (!skip.includes(o)) for (const e of [o.pts[0], o.pts[o.pts.length - 1]]) { const d = V.dist(p, e); if (d < tol && (!best || d < best.d)) best = { d, p: e, why: "road end" }; }
+  for (const o of roads) if (!skip.includes(o) && !o.closed) for (const e of [o.pts[0], o.pts[o.pts.length - 1]]) { const d = V.dist(p, e); if (d < tol && (!best || d < best.d)) best = { d, p: e, why: "road end" }; }
   if (best) return best;
-  for (const o of roads) if (!skip.includes(o)) { const n = nearestOn(o.pts, p), L = pathLen(o.pts); if (n.d < Math.max(tol, o.w / 2) && n.s > 0.5 && n.s < L - 0.5 && (!best || n.d < best.d)) best = { d: n.d, p: n.q, why: "joins the road" }; }
+  for (const o of roads) if (!skip.includes(o)) { const ln = loopOf(o), n = nearestOn(ln, p), L = pathLen(ln); if (n.d < Math.max(tol, o.w / 2) && (o.closed || (n.s > 0.5 && n.s < L - 0.5)) && (!best || n.d < best.d)) best = { d: n.d, p: n.q, why: "joins the road" }; }
   return best;
 }
 // the road (index) nearest p within its surface (+ margin), for picking -> index or -1
 export function roadAt(p, roads, margin = 0.5) {
   let best = -1, bd = Infinity;
-  roads.forEach((o, i) => { const n = nearestOn(o.pts, p); if (n.d < o.w / 2 + margin && n.d < bd) { bd = n.d; best = i; } });
+  roads.forEach((o, i) => { const n = nearestOn(loopOf(o), p); if (n.d < o.w / 2 + margin && n.d < bd) { bd = n.d; best = i; } });
   return best;
 }
 
@@ -96,13 +106,13 @@ function minDistPath(b, p) { let m = Infinity; const n = b.pts.length; for (let 
 const nearBlock = (p, blocks, d) => blocks.some((b) => !b.parent && !b.at && minDistPath(b, p) < (b.D || 12) / 2 + d);
 export function roadProps(r, ctx) {
   const { roads, blocks = [], attach = {}, free = () => true } = ctx;
-  const R = rng((r.id * 2654435761) >>> 0), L = pathLen(r.pts), items = [], wires = [];
+  const R = rng((r.id * 2654435761) >>> 0), P = loopOf(r), L = pathLen(P), items = [], wires = [];
   const others = roads.filter((o) => o !== r), side = R() < 0.5 ? 1 : -1;
   const clear = (p, m) => free(p) && !others.some((o) => onRoad(p, o, roads, m)) && !blocks.some((b) => !b.parent && !b.at && minDistPath(b, p) < (b.D || 12) / 2 + m);
-  const frame = (s) => { let acc = 0; for (let i = 0; i + 1 < r.pts.length; i++) { const l = V.dist(r.pts[i], r.pts[i + 1]); if (s <= acc + l || i + 2 === r.pts.length) { const u = V.norm(V.sub(r.pts[i + 1], r.pts[i])); return { p: V.add(r.pts[i], V.mul(u, Math.min(l, s - acc))), u }; } acc += l; } return { p: r.pts[0], u: [1, 0] }; };
+  const frame = (s) => { let acc = 0; for (let i = 0; i + 1 < P.length; i++) { const l = V.dist(P[i], P[i + 1]); if (s <= acc + l || i + 2 === P.length) { const u = V.norm(V.sub(P[i + 1], P[i])); return { p: V.add(P[i], V.mul(u, Math.min(l, s - acc))), u }; } acc += l; } return { p: P[0], u: [1, 0] }; };
   const at = (s, off) => { const f = frame(s); return { p: V.add(f.p, V.mul(V.left(f.u), off)), u: f.u }; };
   const facing = (back) => [-back[1], back[0]];        // the "along" that turns a prop's back (+y) to `back` on the plan
-  const onSelf = (p, off) => nearestOn(r.pts, p).d < Math.abs(off) - 0.3;   // (at a bend: pushed onto the road itself)
+  const onSelf = (p, off) => nearestOn(P, p).d < Math.abs(off) - 0.3;   // (at a bend: pushed onto the road itself)
   const taken = [];
   const lampName = r.w >= 7 ? "lamp_0" : R() < 0.5 ? "lamp_1" : "lamp_2";
   for (let s = 8 + R() * 6; s < L - 4; s += 26) {

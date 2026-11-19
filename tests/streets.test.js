@@ -82,3 +82,12 @@ test("along a bent road the props follow the bends", () => {
   for (const i of items) { const n = (pts, p) => Math.min(...pts.slice(1).map((q, k) => { const a = pts[k], d = V.sub(q, a), t = Math.max(0, Math.min(1, V.dot(V.sub(p, a), d) / V.dot(d, d))); return V.dist(p, V.add(a, V.mul(d, t))); }));
     const d = n(r.pts, [i.p[0], i.p[2]]); assert.ok(i.name.startsWith("car") ? d < 3.5 : d > 3.5 && d < 7, `${i.name} ${d.toFixed(2)} m from the centre line`); }
 });
+
+test("a loop: a strip all the way round, kerbs unbroken (one inside, one outside), no ends to join", () => {
+  const pts = []; for (let i = 0; i < 40; i++) { const a = (i / 40) * Math.PI * 2; pts.push([30 * Math.cos(a), 30 * Math.sin(a)]); }
+  const r = { id: 3, pts, w: 4, closed: true }, st = roadStrip(r, [r]);
+  assert.equal(st.left.length, 41); assert.ok(V.dist(st.left[0], st.left[40]) < 1e-9, "closed up");
+  const k = kerbs(r, [r]); assert.equal(k.length, 2); assert.deepEqual(endExt(r, [r]), [0, 0]);
+  assert.ok(onRoad([30, 0], r, [r]) && onRoad([0, -31], r, [r]) && !onRoad([0, 0], r, [r]));
+  const link = road(4, [0, 60], [0, 30]); assert.deepEqual(endExt(link, [r, link]), [0, -2], "a road ending on the loop stops at its edge");
+});

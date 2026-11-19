@@ -35,17 +35,27 @@ export function blockHandles(b, lay, phase = "select") {
     const outSign = Math.abs(polyArea(offsetPoly(b.pts, true, 1))) > Math.abs(polyArea(b.pts)) ? 1 : -1;      // the offset sign that grows the ring
     const outN = V.mul(lf, outSign), wallPt = V.add(b.pts[0], V.mul(outN, D / 2)), c = V.mul(b.pts.reduce((a, q) => V.add(a, q), [0, 0]), 1 / n);
     out.push({ kind: "push", place: "out", at: P(wallPt, y), dir: d3(outN), wall: { mode: "width", n: outN, s: outSign } });
+    const far = b.pts[Math.floor(n / 2)], farN = V.norm(V.sub(far, c));      // the radius: on the far side of the ring
+    out.push({ kind: "radius", place: "out", at: P(V.add(far, V.mul(farN, D / 2)), y), dir: d3(farN), c, n: farN });
     if (phase === "place") out.push({ kind: "move", place: "at", at: P(c, 0) });
     out.push({ kind: "floors", place: "above", at: P(V.sub(wallPt, V.mul(outN, D / 2)), top), dir: null });
     if (phase === "select") out.push({ kind: "step", place: "at", at: P(V.add(wallPt, V.mul(outN, -1.8)), top), dir: d3(V.mul(outN, -1)), mode: "ring", n: V.mul(outN, -1) });
     return out;
   }
   const n = b.pts.length, L = pathLen(b.pts, false), mid = along(b.pts, L / 2), u0 = V.norm(V.sub(b.pts[1], b.pts[0])), u1 = V.norm(V.sub(b.pts[n - 2], b.pts[n - 1]));
-  const lf = V.left(mid.u), inset = Math.min(2, D / 4, L / 6);
-  out.push({ kind: "push", place: "out", at: P(V.add(mid.p, V.mul(lf, D / 2)), y), dir: d3(lf), wall: { mode: "width", n: lf, s: 1 } });
-  out.push({ kind: "push", place: "out", at: P(V.add(mid.p, V.mul(lf, -D / 2)), y), dir: d3(V.mul(lf, -1)), wall: { mode: "width", n: V.mul(lf, -1), s: -1 } });
-  out.push({ kind: "push", place: "out", at: P(b.pts[0], y), dir: d3(V.mul(u0, -1)), wall: { mode: "length", n: V.mul(u0, -1), end: 0 } });
-  out.push({ kind: "push", place: "out", at: P(b.pts[n - 1], y), dir: d3(V.mul(u1, -1)), wall: { mode: "length", n: V.mul(u1, -1), end: 1 } });
+  const lf = V.left(mid.u), inset = Math.min(2, D / 4, L / 6), curved = n > 2;
+  if (curved) {                                    // a curve: its two ends and its bend (the arc through them); its walls once built
+    const chord = V.norm(V.sub(b.pts[n - 1], b.pts[0])), cm = V.lerp(b.pts[0], b.pts[n - 1], 0.5), sg = V.dot(V.sub(mid.p, cm), V.left(chord)) >= 0 ? 1 : -1, cx = V.mul(V.left(chord), sg);
+    out.push({ kind: "curveEnd", place: "out", at: P(b.pts[0], y), dir: d3(V.mul(u0, -1)), k: 0 });
+    out.push({ kind: "curveEnd", place: "out", at: P(b.pts[n - 1], y), dir: d3(V.mul(u1, -1)), k: 1 });
+    out.push({ kind: "bend", place: "out", at: P(V.add(mid.p, V.mul(cx, D / 2)), y), dir: d3(cx) });
+    if (phase === "select") for (const sd of [1, -1]) out.push({ kind: "push", place: "out", at: P(V.add(mid.p, V.mul(lf, (sd * D) / 2)), y), dir: d3(V.mul(lf, sd)), wall: { mode: "width", n: V.mul(lf, sd), s: sd } });
+  } else {
+    out.push({ kind: "push", place: "out", at: P(V.add(mid.p, V.mul(lf, D / 2)), y), dir: d3(lf), wall: { mode: "width", n: lf, s: 1 } });
+    out.push({ kind: "push", place: "out", at: P(V.add(mid.p, V.mul(lf, -D / 2)), y), dir: d3(V.mul(lf, -1)), wall: { mode: "width", n: V.mul(lf, -1), s: -1 } });
+    out.push({ kind: "push", place: "out", at: P(b.pts[0], y), dir: d3(V.mul(u0, -1)), wall: { mode: "length", n: V.mul(u0, -1), end: 0 } });
+    out.push({ kind: "push", place: "out", at: P(b.pts[n - 1], y), dir: d3(V.mul(u1, -1)), wall: { mode: "length", n: V.mul(u1, -1), end: 1 } });
+  }
   if (phase === "place") out.push({ kind: "move", place: "at", at: P(mid.p, top) });
   out.push({ kind: "floors", place: "above", at: P(mid.p, top), dir: null });
   if (phase === "select") {
@@ -58,6 +68,8 @@ export function blockHandles(b, lay, phase = "select") {
   }
   return out;
 }
+// a road's handles: its two ends (a loop has none). Drag one to move it; tap one to carry on from it
+export function roadHandles(r) { return r.closed ? [] : [0, r.pts.length - 1].map((i, k) => ({ kind: "roadEnd", place: "at", at: [r.pts[i][0], 0.3, r.pts[i][1]], dir: null, k, road: r })); }
 // the outline of a block for placing handles: the corners of its walls, at its foot and its top
 export function outline(lay) { const q = [...lay.Lp, ...lay.Rp]; return [...q.map((p) => [p[0], lay.base, p[1]]), ...q.map((p) => [p[0], lay.top, p[1]])]; }
 

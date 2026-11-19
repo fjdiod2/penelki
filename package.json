@@ -4,7 +4,8 @@
   "type": "module",
   "scripts": {
     "test": "node --test tests/*.test.js",
-    "test:browser": "python3 tests/desktop.py check && python3 tests/touch.py check"
+    "test:browser": "python3 tests/desktop.py check && python3 tests/touch.py check",
+    "stamp": "python3 tools/stamp.py"
   },
   "devDependencies": {
     "three": "0.160.0"

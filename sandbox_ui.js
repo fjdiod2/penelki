@@ -16,12 +16,13 @@ export const TOOLS = [  { id: "line", key: "1", name: "Block", hint: "Drag a wal
 ];
 const TOUCH_HINT = {
   line: "Tap the ground for a block · tap a block, then drag its arrows · tap its roof to build on top",
-  curve: "Drag from end to end, then drag to bend it and tap", floors: "Drag a roof up or down for floors",
+  curve: "Tap the ground for a curved block · drag its ends and its bend · Done", ring: "Tap the ground for a ring · drag its arrows for its size · Done",
+  floors: "Drag a roof up or down for floors",
   carve: "Tap a panel · drag the arrows round it to stretch the choice · Next · then drag the arrow", paint: "Tap blocks to repaint them",
   trees: "Paint trees with one finger · two fingers move the view", ground: "Paint with one finger · two fingers move the view",
   erase: "Tap a block or a road to knock it down",
   yard: "Tap open ground between blocks to make a yard · tap a yard to rearrange it",
-  road: "Tap where a road starts, then tap for each bend · Done",
+  road: "Tap where a road starts, then tap for each bend · Done · tap a road to move its ends",
 };
 const isBuild = (t) => t === "line" || t === "curve" || t === "ring";
 const $ = (s) => document.querySelector(s);

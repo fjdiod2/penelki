@@ -6,7 +6,7 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { createBlockKit, V, offsetPoly, polyArea, pathLen, nearestOnPath, subPath, cutRects } from "./sandbox_blocks.js";
-import { createTown, MIN_D, sameWall } from "./sandbox_town.js";
+import { createTown, MIN_D, sameWall, arc, ring } from "./sandbox_town.js";
 import { roadStrip, kerbs, prepRoads, snapToRoads, roadAt, roadProps, KERB } from "./sandbox_streets.js";
 import { createProps } from "./props.js";
 import { createClouds } from "./sandbox_sky.js";
@@ -439,20 +439,6 @@ function rectUpdate(cur) {
   draft.pts = [V.add(a, sh), V.add(end, sh)]; draft.D = Dw;
   draft.guides = [ls.g, wg ? line(wg.l, V.add(V.lerp(a, end, 0.5), V.mul(lf, draft.side * Dw))) : null, draft.dirWhy ? { kind: "dir", a, b: end, why: draft.dirWhy } : null].filter(Boolean);
 }
-function arc(a, c, m) {                           // the circle arc from a to c through m (straight if m is near the chord)
-  const ax = a[0], az = a[1], bx = m[0], bz = m[1], cx = c[0], cz = c[1], d = 2 * (ax * (bz - cz) + bx * (cz - az) + cx * (az - bz));
-  const chord = V.dist(a, c), sag = Math.abs(V.dot(V.sub(m, a), V.left(V.norm(V.sub(c, a)))));
-  if (Math.abs(d) < 1e-6 || sag < 1.5) return [a, c];
-  const ux = ((ax * ax + az * az) * (bz - cz) + (bx * bx + bz * bz) * (cz - az) + (cx * cx + cz * cz) * (az - bz)) / d;
-  const uz = ((ax * ax + az * az) * (cx - bx) + (bx * bx + bz * bz) * (ax - cx) + (cx * cx + cz * cz) * (bx - ax)) / d;
-  const R = Math.hypot(ax - ux, az - uz), A0 = Math.atan2(az - uz, ax - ux), A1 = Math.atan2(cz - uz, cx - ux), Am = Math.atan2(bz - uz, bx - ux);
-  const norm = (t) => ((t % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
-  let sweep = norm(A1 - A0); if (norm(Am - A0) > sweep) sweep -= 2 * Math.PI;      // go the way that passes through m
-  const n = Math.max(6, Math.ceil((Math.abs(sweep) * R) / 1.2)), out = [];
-  for (let i = 0; i <= n; i++) { const t = A0 + (sweep * i) / n; out.push([ux + R * Math.cos(t), uz + R * Math.sin(t)]); }
-  return chord > 1 ? out : [a, c];
-}
-function ring(c, r) { const n = Math.max(48, Math.round((2 * Math.PI * r) / 1.2)), out = []; for (let i = 0; i < n; i++) { const t = (i / n) * Math.PI * 2; out.push([c[0] + r * Math.cos(t), c[1] + r * Math.sin(t)]); } return out; }
 // how far a step back goes. Grid on: ends in whole panels of the block below (so on a straight block the panels of the
 // tier above stand right over the ones below), walls in whole end-wall panels (3 m); or so that the moved end or wall
 // meets a guide. Grid off: half metres. Alt: free.

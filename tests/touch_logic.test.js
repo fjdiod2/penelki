@@ -4,7 +4,8 @@ import assert from "node:assert/strict";
 import { blockKit } from "./env.js";
 import { V, pathLen } from "../sandbox_blocks.js";
 import { createTown } from "../sandbox_town.js";
-import { classifyTwo, blockHandles, outline, selHandles, arrange, hitHandle } from "../sandbox_handles.js";
+import { classifyTwo, blockHandles, outline, selHandles, arrange, hitHandle, roadHandles } from "../sandbox_handles.js";
+import { arc, ring } from "../sandbox_town.js";
 
 const kit = await blockKit();
 const { W, E4 } = kit;
@@ -128,4 +129,24 @@ test("a tier is only centred along its roof where that keeps its panels over the
   assert.ok(Math.abs(r.delta[0] / W - Math.round(r.delta[0] / W)) < 1e-6, `on a joint: ${r.delta[0] / W} panels`);
   const even = townOf([block({ pts: [[0, 0], [14 * W, 0]] }), block({ id: 2, parent: 1, pts: [[0, 0], [6 * W, 0]] })]);
   const e = even.T.tierMove(even.T.byId.get(2), even.T.byId.get(1), [3.9 * W, 0], 1); assert.ok(near(e.delta[0], 4 * W) && e.why.includes("centred"));
+});
+
+test("a ring being placed: move, its depth and its radius on opposite sides, floors", () => {
+  const b = block({ pts: ring([10, 20], 30), closed: true }), h = blockHandles(b, kit.layout(b, 0), "place");
+  assert.deepEqual(h.map((x) => x.kind).sort(), ["floors", "move", "push", "radius"]);
+  const rad = h.find((x) => x.kind === "radius"), push = h.find((x) => x.kind === "push");
+  assert.ok(Math.abs(V.dist([rad.at[0], rad.at[2]], [10, 20]) - 36) < 0.3 && V.dot(rad.n, V.sub([rad.at[0], rad.at[2]], [10, 20])) > 0, "outside, pointing out");
+  assert.ok(V.dist([rad.at[0], rad.at[2]], [push.at[0], push.at[2]]) > 60, "across the ring from the depth arrow");
+});
+test("a curve: its two ends and its bend (on the outside of the curve), no straight lengthening; walls too once built", () => {
+  const b = block({ pts: arc([0, 0], [40, 0], [20, -10]) }), lay = kit.layout(b, 0), h = blockHandles(b, lay, "place");
+  assert.ok(!h.some((x) => x.wall && x.wall.mode === "length"));
+  assert.deepEqual(h.filter((x) => x.kind === "curveEnd").map((x) => x.k), [0, 1]);
+  const bend = h.find((x) => x.kind === "bend"); assert.ok(bend.at[2] < -10 && bend.dir[2] < 0, "on the outside of the curve");
+  assert.equal(blockHandles(b, lay, "select").filter((x) => x.kind === "push").length, 2);
+});
+test("a road's handles are its ends; a loop has none", () => {
+  const r = { id: 1, pts: [[0, 0], [10, 0], [20, 5]], w: 7 };
+  assert.deepEqual(roadHandles(r).map((h) => [h.k, h.at[0], h.at[2]]), [[0, 0, 0], [1, 20, 5]]);
+  assert.deepEqual(roadHandles({ ...r, closed: true }), []);
 });

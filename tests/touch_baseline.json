@@ -392,6 +392,116 @@
   "some": true
  },
  {
+  "step": "ring: tap places one",
+  "radius": [
+   30
+  ],
+  "held": "place",
+  "handles": [
+   "floors",
+   "move",
+   "push",
+   "radius"
+  ]
+ },
+ {
+  "step": "ring: drag the radius arrow",
+  "radius": [
+   38
+  ]
+ },
+ {
+  "step": "curve: tap places one",
+  "curve": {
+   "n": 27,
+   "a": [
+    -163,
+    118
+   ],
+   "c": [
+    -138,
+    118
+   ]
+  },
+  "handles": [
+   "bend",
+   "curveEnd",
+   "curveEnd",
+   "floors",
+   "move"
+  ]
+ },
+ {
+  "step": "curve: drag the bend",
+  "still_curved": true,
+  "ends_same": true
+ },
+ {
+  "step": "curve: drag an end",
+  "moved": true,
+  "other_end_same": true
+ },
+ {
+  "step": "road: tap, tap, Done",
+  "roads": [
+   [
+    [
+     29,
+     118
+    ],
+    [
+     90,
+     118
+    ]
+   ]
+  ]
+ },
+ {
+  "step": "road: tap it: its ends",
+  "handles": [
+   "roadEnd",
+   "roadEnd"
+  ],
+  "buttons": {
+   "t-done": true,
+   "t-del": true,
+   "t-cancel": false
+  }
+ },
+ {
+  "step": "road: drag an end",
+  "roads": [
+   [
+    [
+     29,
+     118
+    ],
+    [
+     88,
+     134
+    ]
+   ]
+  ]
+ },
+ {
+  "step": "road: Delete",
+  "roads": []
+ },
+ {
+  "step": "hole: tap the block",
+  "held": 900
+ },
+ {
+  "step": "hole: tap its floor: a block in the hole",
+  "inhole": [
+   [
+    3,
+    3,
+    12
+   ]
+  ]
+ },
+ {
   "step": "walk: tap a spot to stand there",
   "st": {
    "y0": 0,

@@ -21,6 +21,12 @@ each; run them before a release, not after every change). They need Python with 
     python3 tests/touch.py check       # fingers on a phone-sized page: camera gestures, tap to place, handles, extrude
     python3 tests/desktop.py record    # after an intended change: record the new baseline
 
+## Publishing
+
+The site is served by GitHub Pages from `main`. Before pushing, run `npm run stamp`: it writes a fingerprint of each
+script's contents into `index.html`'s import map (`sandbox_core.js?v=…`), so browsers load changed scripts anew instead
+of a cached old copy, and keep the unchanged ones cached.
+
 ## Props on the CDN
 
 The props (benches, lamps, cars, poles... from the train simulator's `props.json` and textures) are not in git: they

@@ -12,7 +12,7 @@
 import { THREE, renderer, camera, controls, ui, grid, kit, cursor as mouse, now, setInput, setMods, press, move, release, abortPress, cancel,
   showHover, updateDraft, commitDraft, startHeight, flash, on, pick, overlayRoot, town, rebuild, snapshot, pushUndo, applyState, tip,
   snapPoint, tolAt, screenOf, onPlane, randFin, selOverlay, OV, cellAt, cellOnWall, setSel, beginPush, beginPull, layOf, edit, ghost,
-  undoMark, squashUndo, dropUndo, showGuides } from "./sandbox_core.js";
+  undoMark, squashUndo, dropUndo, showGuides, addRoad, roadStart, roadEnd } from "./sandbox_core.js";
 import { renderSub } from "./sandbox_ui.js";
 import { sameWall } from "./sandbox_town.js";
 import { classifyTwo, blockHandles, outline, selHandles, arrange, hitHandle } from "./sandbox_handles.js";
@@ -33,7 +33,7 @@ cvs.addEventListener("pointercancel", (e) => { if (e.pointerType === "touch") to
 // blk: the block in hand in the Block tool: { id, phase: "place" (new: move it, size it; Done or Cancel) or "select"
 // (built: size it, step back from it), before / mark: the town and the undo stack before it was placed }
 // cv: the Extrude tool's stage: "choose" (the choice of panels: stretch it, move it) or "pull" (the arrow)
-let blk = null, cv = null;
+let blk = null, cv = null, rc = null;              // rc: a road being laid, tap by tap: { a: where the next piece starts }
 const blkBlock = () => (blk ? now.S.blocks.find((b) => b.id === blk.id) || null : null);
 function placeNew(b) {                             // put a new block in the town, being placed
   const before = snapshot(), mark = undoMark(); edit((S) => { S.blocks.push(b); S.nextId++; });
@@ -47,6 +47,7 @@ function status() {                                // the tip and the buttons fo
   if (hd) return;
   if (blk && blk.phase === "place") tip("place it<small>drag the middle to move it · the arrows for its walls and floors · Done</small>");
   else if (blk) tip("<small>arrows: walls and floors · blue tabs on the roof: drag inward to step back · tap the roof to build on it</small>");
+  else if (rc) tip("tap where the road goes<small>each tap lays the next piece · Done to finish</small>");
   else if (cv && now.sel) { const s = now.sel, k = Math.abs(s.k1 - s.k0) + 1, f = Math.abs(s.f1 - s.f0) + 1;
     tip(cv === "choose" ? `${k} × ${f} panel${k * f > 1 ? "s" : ""}<small>drag the edges to stretch it, the middle to move it · Next</small>` : `${k} × ${f} panel${k * f > 1 ? "s" : ""}<small>drag the arrow ${ui.carve === "out" ? "out to build" : "in to dig"}</small>`); }
   else tip("");
@@ -119,6 +120,7 @@ function tap(x, y) {
   mouse.x = x; mouse.y = y; const t = ui.tool;
   if (t === "line") tapBuild(pick());
   else if (t === "carve") tapCarve(pick());
+  else if (t === "road") { const p = onPlane(0); if (!p) return; if (!rc) rc = { a: roadStart(p) }; else { const e = roadEnd(rc.a, p), r = addRoad(rc.a, e.p); if (r) rc.a = e.p; } status(); }
   else if (t === "paint" || t === "erase") { mouse.in = true; press(); release(); mouse.in = false; showHover(); }
 }
 let told = false;
@@ -152,6 +154,7 @@ function tapCarve(at) {
 // size on screen, laid out on screen (sandbox_handles.js arrange) and found by distance on screen
 function handles() {
   if (document.body.classList.contains("clean") || stepping()) return { list: [], hull: [] };
+  if (ui.tool === "road" && rc) return { list: [{ kind: "pin", place: "at", at: [rc.a[0], 0.3, rc.a[1]] }], hull: [] };
   if (ui.tool === "line") { const b = blkBlock(), lay = b && layOf(b.id); return lay ? { list: blockHandles(b, lay, blk.phase), hull: outline(lay) } : { list: [], hull: [] }; }
   const s = now.sel;
   if (ui.tool === "carve" && cv && s && now.S.blocks.includes(s.b)) {
@@ -249,11 +252,12 @@ function abortHandle() {
 const hud = new THREE.Group(); overlayRoot.add(hud);
 function badge(kind) {
   const c = document.createElement("canvas"); c.width = c.height = 128; const x = c.getContext("2d");
-  const fill = { push: "#ffffff", edge: "#ffffff", move: "#ffffff", pull: "#ffd75e", floors: "#ffd75e", step: "#7ad8ff" }[kind];
+  const fill = { pin: "#ffd75e", push: "#ffffff", edge: "#ffffff", move: "#ffffff", pull: "#ffd75e", floors: "#ffd75e", step: "#7ad8ff" }[kind];
   x.beginPath(); x.arc(64, 64, 54, 0, Math.PI * 2); x.fillStyle = fill; x.globalAlpha = 0.92; x.fill(); x.globalAlpha = 1;
   x.lineWidth = 6; x.strokeStyle = "rgba(20,22,26,.75)"; x.stroke(); x.fillStyle = "#1c1f24";
   const tri = (ax, ay, bx, by, cx, cy) => { x.beginPath(); x.moveTo(ax, ay); x.lineTo(bx, by); x.lineTo(cx, cy); x.fill(); };
-  if (kind === "floors") { tri(64, 18, 92, 54, 36, 54); tri(64, 110, 92, 74, 36, 74); }
+  if (kind === "pin") { x.beginPath(); x.arc(64, 64, 14, 0, Math.PI * 2); x.fill(); }
+  else if (kind === "floors") { tri(64, 18, 92, 54, 36, 54); tri(64, 110, 92, 74, 36, 74); }
   else if (kind === "move") { tri(64, 14, 84, 38, 44, 38); tri(64, 114, 84, 90, 44, 90); tri(14, 64, 38, 44, 38, 84); tri(114, 64, 90, 44, 90, 84); x.fillRect(56, 36, 16, 56); x.fillRect(36, 56, 56, 16); }
   else if (kind === "step") { x.lineWidth = 13; x.lineCap = "round"; x.lineJoin = "round"; x.beginPath(); x.moveTo(52, 34); x.lineTo(82, 64); x.lineTo(52, 94); x.strokeStyle = "#1c1f24"; x.stroke(); }
   else { x.beginPath(); x.moveTo(104, 64); x.lineTo(66, 30); x.lineTo(66, 50); x.lineTo(26, 50); x.lineTo(26, 78); x.lineTo(66, 78); x.lineTo(66, 98); x.closePath(); x.fill(); }
@@ -292,6 +296,7 @@ on("frame", () => {
   if (now.input !== "touch") return;
   if (blk && (!blkBlock() || ui.tool !== "line")) { if (ui.tool !== "line") finishPlace(); blk = null; status(); }
   if (cv && (ui.tool !== "carve" || !now.sel)) { cv = null; status(); }
+  if (rc && ui.tool !== "road") { rc = null; status(); }
   drawHud();
 });
 
@@ -333,7 +338,7 @@ function cameraTwo(a, b) {                         // slide, pinch and twist at 
 // a choice of panels: Next, Cancel · the arrow: Cancel
 function updateTouchbar() {
   const d = now.draft, busy = !!(d && d.stage !== "base"), b = ui.tool === "line" && blkBlock();
-  const done = busy || b || cv === "choose", del = !busy && b && blk.phase === "select", can = (d && !b) || (b && blk.phase === "place") || cv;
+  const done = busy || b || cv === "choose" || rc, del = !busy && b && blk.phase === "select", can = (d && !b) || (b && blk.phase === "place") || cv;
   $("#t-done").style.display = done ? "" : "none"; $("#t-done").textContent = cv === "choose" && !busy ? "Next" : "Done";
   $("#t-del").style.display = del ? "" : "none";
   $("#t-cancel").style.display = can ? "" : "none";
@@ -343,6 +348,7 @@ $("#t-done").onclick = () => {
   const d = now.draft;
   if (d) { if (d.stage === "height") commitDraft(); else if (d.stage === "bend" || d.stage === "place") { d.drag = null; startHeight(); updateDraft(); } showHover(); }
   else if (cv === "choose") cv = "pull";
+  else if (rc) rc = null;
   else if (blk && blk.phase === "place") finishPlace();
   else letGo();
   status();

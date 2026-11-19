@@ -81,7 +81,7 @@ def run():
         front = pg.evaluate("(() => { const b = window.__sandbox.S().blocks[0], u = [b.pts[1][0]-b.pts[0][0], b.pts[1][1]-b.pts[0][1]], L = Math.hypot(...u); const lf = [u[1]/L, -u[0]/L], s = lf[1] > 0 ? 1 : -1; return { o: [b.pts[0][0] + lf[0]*s*b.D/2, b.pts[0][1] + lf[1]*s*b.D/2], u: [u[0]/L, u[1]/L], n: [lf[0]*s, lf[1]*s] }; })()")
         P = lambda t, y: scr(front["o"][0] + front["u"][0] * t + front["n"][0] * 0.02, y, front["o"][1] + front["u"][1] * t + front["n"][1] * 0.02)
         tap(*P(4.8, 0.8 + 2.8 * 1.5)); log("tap a panel: a choice", stage=pg.evaluate("window.__touch.stage()"), tip=tip(), buttons=vis(), handles=sorted(h.get("edge") or h["kind"] for h in handles()))
-        sel = lambda: pg.evaluate("window.__touch.sel()"); log("handles at", hs=[(h.get("edge") or h["kind"], [round(v) for v in h["at"]]) for h in handles()], sel=sel())
+        sel = lambda: pg.evaluate("window.__touch.sel()"); log("handles at", hs=[[h.get("edge") or h["kind"], [round(v) for v in h["at"]]] for h in handles()], sel=sel())
         r = H("edge", edge="k1")["at"]; drag1(r, P(11.2, 0.8 + 2.8 * 1.5)); log("stretch it right", sel=sel())
         u_ = H("edge", edge="f1")["at"]; drag1(u_, P(8, 0.8 + 2.8 * 3.5)); log("stretch it up", sel=sel(), tip=tip())
         pg.screenshot(path=os.path.join(HERE, "out", "touch_carve.png"))

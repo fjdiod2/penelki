@@ -393,7 +393,7 @@
  },
  {
   "step": "tool bar scrolls",
-  "fade": "panel more-l"
+  "fade": "panel more-l more-r"
  },
  {
   "step": "errors",

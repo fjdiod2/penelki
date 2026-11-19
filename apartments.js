@@ -24,7 +24,7 @@ const VERT = `
     gl_Position = projectionMatrix * mv;
   }`;
 const FRAG = `
-  uniform sampler2D tWalls; uniform sampler2D tWin; uniform sampler2D tGlz; uniform sampler2D tDoor; uniform sampler2D tFront; uniform sampler2D tStuff; uniform sampler2D tPipe;
+  uniform sampler2D tWalls; uniform sampler2D tWin; uniform sampler2D tGlz; uniform sampler2D tDoor; uniform sampler2D tFront; uniform sampler2D tStuff; uniform sampler2D tPipe; uniform sampler2D tEnt;
   uniform vec3 fogC; uniform vec2 fogR; uniform vec3 camM; uniform vec2 psize; uniform vec3 sun;
   varying vec3 vM; varying vec2 vUv; varying vec2 vLoc; varying float vMid; varying vec4 vVar; varying vec4 vWall; varying vec4 vSh; varying float vDist;
   float h1(float n) { return fract(sin(n * 12.9898) * 43758.5453); }
@@ -64,6 +64,7 @@ const FRAG = `
     else if (id == 14) col = texture2D(tDoor, vUv + vec2(vSh.z / 4.0, 0.0)).rgb * 0.9;
     else if (id == 15) col = texture2D(tFront, vUv - vec2(0.0, vSh.w / 4.0)).rgb;
     else if (id == 16) { vec4 s = texture2D(tStuff, vUv); if (s.a < 0.5) discard; col = s.rgb; }
+    else if (id == 18) col = texture2D(tEnt, vUv + vec2(vSh.z / 4.0, 0.0)).rgb * 0.92;   // entrance door: one of 4 (iUv.z)
     else { vec4 s = texture2D(tPipe, vUv); if (s.a < 0.5) discard; col = s.rgb; }
     float lit = 0.62 + 0.55 * max(dot(N, sun), 0.0) + 0.08 * N.y;                     // soft sky light plus the sun
     col *= lit;
@@ -76,7 +77,7 @@ export async function createApartments(fog) {
   const TL = new THREE.TextureLoader(), tex = (f, rep) => { const t = TL.load("./assets/apt/" + f); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; if (rep) t.wrapS = t.wrapT = THREE.RepeatWrapping; return t; };
   const camM = { value: new THREE.Vector3() };
   const uniBase = { tWalls: { value: tex("walls.jpg") }, tWin: { value: tex("windows.png") }, tGlz: { value: tex("glazing.png") }, tDoor: { value: tex("doors.png") },
-    tFront: { value: tex("fronts.png") }, tStuff: { value: tex("stuff.png") }, tPipe: { value: tex("pipe.png", true) }, fogC: { value: fog.color }, fogR: { value: new THREE.Vector2(fog.near, fog.far) },
+    tFront: { value: tex("fronts.png") }, tStuff: { value: tex("stuff.png") }, tPipe: { value: tex("pipe.png", true) }, tEnt: { value: tex("entrance.png") }, fogC: { value: fog.color }, fogR: { value: new THREE.Vector2(fog.near, fog.far) },
     camM, sun: { value: SUN } };
   // one geometry per piece type; its atlas UVs point at the first tile, and are shifted per instance in the vertex data
   // of a COPY per variant would be wasteful, so the shift is done here by giving each instance its own uv offset attribute

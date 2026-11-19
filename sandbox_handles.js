@@ -8,12 +8,14 @@ const ang = (d) => Math.atan2(d[1], d[0]);
 // a, b: [[x, y], [x, y]] where the two fingers started and where they are now -> "tilt" | "move" | null (not yet)
 export function classifyTwo(a, b) {
   const d0 = V.sub(b[0], a[0]), d1 = V.sub(b[1], a[1]), m = Math.max(V.len(d0), V.len(d1));
-  if (m < 10) return null;
+  if (m < 14) return null;
+  // a tilt, as real fingers do it: both going the same way up or down (each mostly up or down, neither far behind the
+  // other), the fingers more side by side than one above the other (up to 55 degrees), spacing and angle about kept
+  const up = (d) => Math.abs(d[1]) > 1.4 * Math.abs(d[0]), y0 = Math.abs(d0[1]), y1 = Math.abs(d1[1]);
   const spread0 = V.dist(a[0], a[1]), spread1 = V.dist(b[0], b[1]);
-  const vertical = (d) => Math.abs(d[1]) > 2 * Math.abs(d[0]) && Math.abs(d[1]) > 6;
-  const sideBySide = Math.abs(a[1][0] - a[0][0]) > Math.abs(a[1][1] - a[0][1]);
+  const sideBySide = Math.abs(a[1][1] - a[0][1]) < 1.43 * Math.abs(a[1][0] - a[0][0]);
   const da = ang(V.sub(b[1], b[0])) - ang(V.sub(a[1], a[0])), turn = Math.abs(Math.atan2(Math.sin(da), Math.cos(da)));
-  if (vertical(d0) && vertical(d1) && Math.sign(d0[1]) === Math.sign(d1[1]) && sideBySide && Math.abs(spread1 - spread0) < 0.15 * spread0 && turn < 0.17) return "tilt";
+  if (up(d0) && up(d1) && Math.sign(d0[1]) === Math.sign(d1[1]) && Math.min(y0, y1) > 0.6 * Math.max(y0, y1) && sideBySide && Math.abs(spread1 - spread0) < 0.25 * spread0 && turn < 0.17) return "tilt";
   return "move";
 }
 

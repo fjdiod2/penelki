@@ -30,10 +30,24 @@
   "closer": true
  },
  {
+  "step": "the home button: back to the start",
+  "cam": {
+   "dist": 275,
+   "tilt": 62,
+   "turn": 38,
+   "tgt": [
+    0,
+    0,
+    0
+   ]
+  },
+  "visible": true
+ },
+ {
   "step": "two fingers up tilt toward the horizon",
   "tilt": [
    45,
-   78
+   86
   ],
   "tilted": true,
   "dist_same": false

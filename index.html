@@ -11,6 +11,9 @@
   #touchbar button { height: 44px; padding: 0 22px; border-radius: 22px; border: 1px solid var(--line); background: var(--panel); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); color: var(--text); font-size: 12px; box-shadow: 0 4px 16px rgba(0,0,0,.2); }
   #touchbar #t-done { background: rgba(255, 215, 94, .9); color: #222; font-weight: 600; }
   #touchbar #t-del { color: #ffb3a8; }
+  #t-home { display: none; position: fixed; right: 14px; bottom: 120px; width: 44px; height: 44px; padding: 0; border-radius: 50%; border: 1px solid var(--line); background: var(--panel); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 4px 16px rgba(0,0,0,.2); color: var(--text); }
+  body.touch #t-home { display: block; } body.clean #t-home, body.choosing #t-home { display: none; }
+  #t-home svg { width: 22px; height: 22px; display: block; margin: auto; }
   button { font: inherit; color: inherit; cursor: pointer; }
   .panel { background: var(--panel); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 6px 24px rgba(0,0,0,.18); }
   #title { position: fixed; left: 16px; top: 14px; padding: 8px 14px; display: flex; gap: 10px; align-items: baseline; }
@@ -61,7 +64,7 @@
   @media (max-width: 640px) {
     #hazebox { right: 10px; top: 54px; } #photobar { flex-wrap: wrap; justify-content: center; max-width: calc(100vw - 16px); }
     .tool { width: 54px; height: 50px; } #bar { scroll-snap-type: x proximity; } .tool { scroll-snap-align: start; } .tool span { font-size: 10px; } .tool svg { width: 21px; height: 21px; } .tool kbd { display: none; }
-    #title span { display: none; } #title { padding: 6px 10px; } #topright { top: 10px; right: 10px; } #topright button { padding: 6px 7px; font-size: 12px; } #title { top: 10px; left: 10px; }
+    #title span, #title b { display: none; } #flash { top: 64px; } #title { padding: 6px 10px; } #topright { top: 10px; right: 10px; } #topright button { padding: 6px 7px; font-size: 12px; } #title { top: 10px; left: 10px; }
     #stats { display: none; } #hint { font-size: 11px; padding: 2px 10px; }
     #dock { bottom: calc(8px + env(safe-area-inset-bottom)); gap: 6px; }
     #sub { flex-wrap: nowrap; overflow-x: auto; justify-content: flex-start; max-width: calc(100vw - 16px); scrollbar-width: none; } .chip { flex: none; } .sz { flex: none; }
@@ -79,7 +82,7 @@
   "./props.js": "./props.js?v=8d17c897",
   "./sandbox.js": "./sandbox.js?v=3d6d5172",
   "./sandbox_blocks.js": "./sandbox_blocks.js?v=1418247a",
-  "./sandbox_core.js": "./sandbox_core.js?v=3225920a",
+  "./sandbox_core.js": "./sandbox_core.js?v=92609d4a",
   "./sandbox_desktop.js": "./sandbox_desktop.js?v=ef978342",
   "./sandbox_details.js": "./sandbox_details.js?v=8e692644",
   "./sandbox_handles.js": "./sandbox_handles.js?v=cf4327e2",
@@ -87,7 +90,7 @@
   "./sandbox_photo.js": "./sandbox_photo.js?v=8613cfc7",
   "./sandbox_sky.js": "./sandbox_sky.js?v=9b986eac",
   "./sandbox_streets.js": "./sandbox_streets.js?v=04237144",
-  "./sandbox_touch.js": "./sandbox_touch.js?v=7a21b172",
+  "./sandbox_touch.js": "./sandbox_touch.js?v=2f48fb6b",
   "./sandbox_town.js": "./sandbox_town.js?v=790d7a65",
   "./sandbox_ui.js": "./sandbox_ui.js?v=8577228b",
   "./sandbox_walk.js": "./sandbox_walk.js?v=9727c672",
@@ -110,7 +113,7 @@
   <p><b>Keys</b> <kbd>1</kbd>–<kbd>8</kbd> tools · <kbd>Esc</kbd> cancel · <kbd>Del</kbd> knock down the block under the cursor · <kbd>[</kbd> <kbd>]</kbd> brush size · <kbd>H</kbd> hide interface · <kbd>P</kbd> photo</p>
   <p>Your town is saved in this browser automatically.</p>
 </div>
-<div id="dock"><div id="touchbar"><button id="t-done" style="display:none">Done</button><button id="t-cancel" style="display:none">Cancel</button><button id="t-del" style="display:none">Delete</button></div><div id="hint"></div><div id="sub" class="panel"></div><div id="bar" class="panel"></div></div>
+<button id="t-home" title="Back to the middle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg></button><div id="dock"><div id="touchbar"><button id="t-done" style="display:none">Done</button><button id="t-cancel" style="display:none">Cancel</button><button id="t-del" style="display:none">Delete</button></div><div id="hint"></div><div id="sub" class="panel"></div><div id="bar" class="panel"></div></div>
 <div id="hazebox" class="panel"><label class="sz">haze <input type="range" class="haze" min="0" max="100" step="1" value="30"><b class="hazev">30%</b></label><small class="hazed"></small>
   <span class="wsep"></span><button class="chip" id="cloudsbtn"><i class="sw dice">☁</i>Low clouds</button>
   <label class="sz cl">base <input type="range" id="cloudbase" min="80" max="800" step="10" value="300"><b id="cloudbasev">300 m</b></label><small class="cl" id="cloudfl"></small>

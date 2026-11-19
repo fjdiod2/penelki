@@ -12,7 +12,7 @@
 import { THREE, renderer, camera, controls, ui, grid, kit, cursor as mouse, now, setInput, setMods, press, move, release, abortPress, cancel,
   showHover, updateDraft, commitDraft, startHeight, flash, on, pick, overlayRoot, town, rebuild, snapshot, pushUndo, applyState, tip,
   snapPoint, tolAt, screenOf, onPlane, randFin, selOverlay, OV, cellAt, cellOnWall, setSel, beginPush, beginPull, layOf, edit, ghost,
-  undoMark, squashUndo, dropUndo, showGuides, addRoad, roadStart, roadEnd, holdStreets } from "./sandbox_core.js";
+  undoMark, squashUndo, dropUndo, showGuides, addRoad, roadStart, roadEnd, holdStreets, HOME } from "./sandbox_core.js";
 import { renderSub } from "./sandbox_ui.js";
 import { sameWall, arc, ring } from "./sandbox_town.js";
 import { classifyTwo, twoStep, blockHandles, outline, selHandles, arrange, hitHandle, roadHandles } from "./sandbox_handles.js";
@@ -400,6 +400,19 @@ function cameraTwo(a, b) {
   controls.update();
 }
 
+
+// the home button: back to where the camera starts, as it starts, in half a second (eased); any touch stops it
+let homing = null;
+$("#t-home").onclick = () => {
+  homing = { t0: performance.now(), p0: camera.position.clone(), q0: controls.target.clone(), p1: new THREE.Vector3(...HOME.pos), q1: new THREE.Vector3(...HOME.target) };
+};
+on("frame", () => {
+  const dock = $("#dock").getBoundingClientRect(); $("#t-home").style.bottom = `${Math.round(innerHeight - dock.top + 12)}px`;   // just above the dock
+  if (!homing) return; if (fingers.size) { homing = null; return; }
+  const k = Math.min(1, (performance.now() - homing.t0) / 500), e = k * k * (3 - 2 * k);
+  camera.position.lerpVectors(homing.p0, homing.p1, e); controls.target.lerpVectors(homing.q0, homing.q1, e); controls.update();
+  if (k >= 1) homing = null;
+});
 
 // ---------------------------------------------------------------- the round buttons on the right
 // a curve or ring between steps: Done, Cancel · a block being placed: Done, Cancel · selected: Done, Delete

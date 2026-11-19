@@ -23,11 +23,12 @@ const renderer = new THREE.WebGLRenderer({ antialias: true }); renderer.setPixel
 renderer.outputColorSpace = THREE.SRGBColorSpace; document.body.prepend(renderer.domElement);
 const scene = new THREE.Scene(); scene.background = SKY; scene.fog = new THREE.Fog(FOG.color, FOG.near, FOG.far);
 const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.5, 9000);
-camera.position.set(150, 130, 190);
+export const HOME = { pos: [150, 130, 190], target: [0, 0, 0] };   // where the camera starts, and goes back to
+camera.position.set(...HOME.pos);
 addEventListener("resize", () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true; controls.dampingFactor = 0.12; controls.maxPolarAngle = Math.PI * 0.48; controls.minDistance = 8; controls.maxDistance = 2000; controls.screenSpacePanning = false;
-controls.target.set(0, 0, 0); controls.update();
+controls.target.set(...HOME.target); controls.update();
 
 const kit = await createBlockKit(FOG);
 const { W, H, PL } = kit;
@@ -987,7 +988,7 @@ export const now = {
   get busy() { return !!(draft || action); }, get input() { return prof.name; }, get lastFloors() { return lastFloors; },
 };
 async function start() {
-  if (!(await load())) { ground.sync(); flash("Drag on the grass to lay your first block"); }
+  if (!(await load())) { ground.sync(); flash(now.input === "touch" ? "Tap the grass for your first block" : "Drag on the grass to lay your first block"); }
   rebuild(); setHaze(atmos.haze); Object.assign(clouds.state, atmos.clouds);
   addEventListener("beforeunload", save);
   let last = performance.now(), hazeTick = 0;

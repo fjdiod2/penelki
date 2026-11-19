@@ -37,20 +37,31 @@ export function createClouds(renderer, fog) {
       float h2(vec2 p) { p = fract(p * vec2(0.1031, 0.1030)); p += dot(p, p.yx + 33.33); return fract((p.x + p.y) * p.y); }
       float vn(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f); return mix(mix(h2(i), h2(i + vec2(1.0, 0.0)), f.x), mix(h2(i + vec2(0.0, 1.0)), h2(i + vec2(1.0, 1.0)), f.x), f.y); }
       float fbm(vec2 p) { return 0.55 * vn(p) + 0.28 * vn(p * 2.03 + 7.1) + 0.17 * vn(p * 4.07 + 3.3); }
-      // how much cloud there is at w (0 .. 1): patches from the cover, a base and a top that rise and fall a little
+      // Worley (cellular) noise: the distance to the nearest of points scattered one to a cell -> puffs where inverted
+      float worley(vec2 p) {
+        vec2 i = floor(p), f = fract(p); float m = 1.0;
+        for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++) { vec2 g = vec2(float(x), float(y)), r = g + vec2(h2(i + g), h2(i + g + 17.3)) - f; m = min(m, dot(r, r)); }
+        return sqrt(m);
+      }
+      float remap(float v, float a, float b) { return clamp((v - a) / max(b - a, 1e-4), 0.0, 1.0); }
+      // how much cloud there is at w (0 .. 1). Separate clouds, as in games' cloud systems: a shape of puffs (Worley noise,
+      // roughed up by the smooth noise); the cover cuts it off below (1 - cover), so between clouds there is no cloud at
+      // all; each cloud a dome on a flat base (thick puffs rise high, thin ones stay low); edges eaten away by finer noise
       float dens(vec3 w) {
-        vec2 q = w.xz / 520.0 + vec2(time * 0.004, time * 0.0015);
-        float n = fbm(q), m = vn(w.xz / 150.0 + 11.0), bil = vn(w.xz / 42.0 + 5.0) * 0.6 + vn(w.xz / 17.0 + 2.0) * 0.4;   // (billows on top)
-        float b = base + (m - 0.5) * thick * 0.5, t = base + thick * (0.6 + 0.45 * n + 0.3 * bil);
-        float prof = smoothstep(b, b + thick * 0.25, w.y) * (1.0 - smoothstep(t - thick * 0.3, t, w.y));
-        return smoothstep(1.0 - cover, 1.0 - cover + 0.28, n + 0.1 * m) * prof;
+        vec2 q = w.xz + vec2(time * 2.2, time * 0.8);                                  // (drifting)
+        float shape = (1.0 - worley(q / 260.0)) * 0.6 + (1.0 - worley(q / 110.0 + 3.7)) * 0.25 + fbm(q / 400.0) * 0.35;
+        shape = remap(shape, 1.0 - cover * 0.95, 1.05) + smoothstep(0.88, 1.0, cover) * 0.5;   // (near full cover the gaps close)
+        float h = (w.y - base) / thick;
+        float d = clamp((shape - h * 0.85) * 3.0, 0.0, 1.0) * smoothstep(0.0, 0.08, h) * step(h, 1.4);   // a dome on a flat base
+        float detail = vn(q / 31.0 + w.y / 23.0) * 0.6 + vn(q / 13.0 - w.y / 11.0) * 0.4;
+        return remap(d, detail * 0.45, 1.0);                                          // frayed edges
       }
       void main() {
         float d = texture2D(tDepth, vUv).x;
         vec4 v = projInv * vec4(vUv * 2.0 - 1.0, d * 2.0 - 1.0, 1.0); v /= v.w;
         vec3 w = (camWorld * v).xyz, dir = normalize(w - camPos); float far = d >= 1.0 ? 9000.0 : length(w - camPos);
         // the stretch of the line of sight inside the slab
-        float lo = base - thick * 0.3, hi = base + thick * 1.25, t0 = 0.0, t1 = -1.0;
+        float lo = base, hi = base + thick * 1.4, t0 = 0.0, t1 = -1.0;
         if (abs(dir.y) < 1e-4) { if (camPos.y >= lo && camPos.y <= hi) t1 = far; }
         else { float ta = (lo - camPos.y) / dir.y, tb = (hi - camPos.y) / dir.y; t0 = max(0.0, min(ta, tb)); t1 = min(far, max(ta, tb)); }
         t1 = min(t1, t0 + 4000.0);
@@ -61,7 +72,7 @@ export function createClouds(renderer, fog) {
             if (i >= steps || T < 0.02) break;
             float t = t0 + (float(i) + j) * dt; vec3 p = camPos + dir * t; float k = dens(p);
             if (k > 0.001) {
-              float a = 1.0 - exp(-k * 0.06 * dt), hgt = clamp((p.y - base) / thick, 0.0, 1.0);
+              float a = 1.0 - exp(-k * 0.09 * dt), hgt = clamp((p.y - base) / thick, 0.0, 1.0);
               float lit = exp(-3.0 * dens(p + SUN * 45.0));                                    // how much cloud stands between it and the sun
               vec3 c = mix(vec3(0.42, 0.44, 0.47), vec3(0.95, 0.95, 0.96), smoothstep(0.0, 1.0, hgt) * 0.5 + lit * 0.5) * (0.88 + 0.12 * k);
               c = mix(c, fogC, smoothstep(fogR.x, fogR.y, t) * 0.85);             // far cloud is hazed too

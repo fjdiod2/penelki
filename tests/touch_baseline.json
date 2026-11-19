@@ -1,0 +1,358 @@
+[
+ {
+  "step": "drawn",
+  "st": {
+   "blocks": [],
+   "draft": [
+    "height",
+    1
+   ],
+   "cam": [
+    30,
+    120,
+    110
+   ],
+   "tgt": [
+    0,
+    0,
+    0
+   ]
+  },
+  "tip": "1 floor | drag up or down \u00b7 tap to build",
+  "buttons": [
+   true,
+   true,
+   true
+  ]
+ },
+ {
+  "step": "dragged up",
+  "st": {
+   "blocks": [],
+   "draft": [
+    "height",
+    14
+   ],
+   "cam": [
+    30,
+    120,
+    110
+   ],
+   "tgt": [
+    0,
+    0,
+    0
+   ]
+  },
+  "tip": "14 floors | drag up or down \u00b7 tap to build"
+ },
+ {
+  "step": "tap builds",
+  "st": {
+   "blocks": [
+    [
+     14,
+     15,
+     2
+    ]
+   ],
+   "draft": null,
+   "cam": [
+    30,
+    120,
+    110
+   ],
+   "tgt": [
+    0,
+    0,
+    0
+   ]
+  }
+ },
+ {
+  "step": "pinch",
+  "st": {
+   "blocks": [
+    [
+     14,
+     15,
+     2
+    ]
+   ],
+   "draft": null,
+   "cam": [
+    13,
+    51,
+    47
+   ],
+   "tgt": [
+    -0.0,
+    0,
+    0
+   ]
+  }
+ },
+ {
+  "step": "twist",
+  "st": {
+   "blocks": [
+    [
+     14,
+     15,
+     2
+    ]
+   ],
+   "draft": null,
+   "cam": [
+    40,
+    51,
+    28
+   ],
+   "tgt": [
+    -0.0,
+    0,
+    0
+   ]
+  }
+ },
+ {
+  "step": "slide",
+  "st": {
+   "blocks": [
+    [
+     14,
+     15,
+     2
+    ]
+   ],
+   "draft": null,
+   "cam": [
+    37,
+    51,
+    33
+   ],
+   "tgt": [
+    -4,
+    0,
+    5
+   ]
+  }
+ },
+ {
+  "step": "orbit",
+  "st": {
+   "blocks": [
+    [
+     14,
+     15,
+     2
+    ]
+   ],
+   "draft": null,
+   "cam": [
+    24,
+    38,
+    58
+   ],
+   "tgt": [
+    -4,
+    0,
+    5
+   ]
+  },
+  "buttons": [
+   false,
+   false,
+   true
+  ]
+ },
+ {
+  "step": "step back",
+  "st": {
+   "blocks": [
+    [
+     14,
+     15,
+     2
+    ]
+   ],
+   "draft": [
+    "place",
+    1
+   ],
+   "cam": [
+    30,
+    120,
+    110
+   ],
+   "tgt": [
+    0,
+    0,
+    0
+   ]
+  },
+  "tip": "6 sections \u00d7 15 m | drag its walls or slide it \u00b7 tap beside it for floors",
+  "buttons": [
+   true,
+   true,
+   true
+  ]
+ },
+ {
+  "step": "tier built with Done",
+  "st": {
+   "blocks": [
+    [
+     14,
+     15,
+     2
+    ],
+    [
+     6,
+     15,
+     2
+    ]
+   ],
+   "draft": null,
+   "cam": [
+    30,
+    120,
+    110
+   ],
+   "tgt": [
+    0,
+    0,
+    0
+   ]
+  }
+ },
+ {
+  "step": "carve select",
+  "tip": "",
+  "buttons": [
+   false,
+   true,
+   true
+  ]
+ },
+ {
+  "step": "carve out",
+  "st": {
+   "blocks": [
+    [
+     14,
+     15,
+     2
+    ],
+    [
+     6,
+     15,
+     2
+    ],
+    [
+     2,
+     8,
+     2
+    ]
+   ],
+   "draft": null,
+   "cam": [
+    0,
+    20,
+    60
+   ],
+   "tgt": [
+    0,
+    12,
+    0
+   ]
+  }
+ },
+ {
+  "step": "trees",
+  "some": true
+ },
+ {
+  "step": "drawn 2",
+  "st": {
+   "blocks": [
+    [
+     14,
+     15,
+     2
+    ],
+    [
+     6,
+     15,
+     2
+    ],
+    [
+     2,
+     8,
+     2
+    ]
+   ],
+   "draft": [
+    "height",
+    1
+   ],
+   "cam": [
+    30,
+    120,
+    110
+   ],
+   "tgt": [
+    0,
+    0,
+    0
+   ]
+  },
+  "buttons": [
+   true,
+   true,
+   true
+  ]
+ },
+ {
+  "step": "cancel",
+  "st": {
+   "blocks": [
+    [
+     14,
+     15,
+     2
+    ],
+    [
+     6,
+     15,
+     2
+    ],
+    [
+     2,
+     8,
+     2
+    ]
+   ],
+   "draft": null,
+   "cam": [
+    30,
+    120,
+    110
+   ],
+   "tgt": [
+    0,
+    0,
+    0
+   ]
+  },
+  "buttons": [
+   false,
+   false,
+   true
+  ]
+ },
+ {
+  "step": "errors",
+  "errs": []
+ }
+]

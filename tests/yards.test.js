@@ -71,3 +71,17 @@ test("round a ring: one continuous driveway at a steady distance from the wall, 
   for (let i = 1; i < d.pts.length; i++) assert.ok(V.dist(d.pts[i - 1], d.pts[i]) < 3.5, "continuous");
   assert.ok(V.dist(d.pts[0], d.pts[d.pts.length - 1]) < 3.5, "closing up");
 });
+
+test("the playground goes between the blocks, not out where the yard opens past their ends", () => {
+  const blocks = [slab(1, 0, -30, 30), { ...slab(2, 48, -30, 30), D: 14 }];          // two slabs facing each other, open at both ends
+  const es = []; for (const x of [-24, -8, 8, 24]) { es.push({ p: [x, 6], out: [0, 1], b: 1 }); es.push({ p: [x, 41], out: [0, -1], b: 2 }); }
+  const Y = yardCells([0, 24], { blocks });
+  assert.ok(Y.at([45, 24]), "(this yard does reach out past the ends)");
+  for (let seed = 1; seed < 8; seed++) {
+    const L = yardLayout(Y, { id: 4, seed, entrances: es, blocks }), play = L.items.filter((i) => i.name.startsWith("play"));
+    assert.ok(play.length >= 3, `seed ${seed}: a playground`);
+    for (const p of play) assert.ok(Math.abs(p.p[0]) < 30 && p.p[2] > 6 && p.p[2] < 41, `seed ${seed}: ${p.name} at ${p.p[0].toFixed(0)}, ${p.p[2].toFixed(0)}`);
+    const C = play.reduce((c, p) => [c[0] + p.p[0] / play.length, c[1] + p.p[2] / play.length], [0, 0]);
+    for (const bn of L.items.filter((i) => i.name.startsWith("bench") && Math.abs(i.p[0]) < 30 && i.p[2] > 16 && i.p[2] < 31)) assert.ok(V.dot(V.left(bn.a), V.sub([bn.p[0], bn.p[2]], C)) > 0, "benches face the playground (their backs away from it)");
+  }
+});

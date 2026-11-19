@@ -41,7 +41,8 @@ export function yardCells(p, ctx) {
   }
   for (let k = 0; k < n * n; k++) if (mask[k] === 2) mask[k] = 0;
   const at = (q) => { const i = Math.floor((q[0] - x0) / CELL), j = Math.floor((q[1] - z0) / CELL); return i >= 0 && j >= 0 && i < n && j < n && mask[j * n + i] === 1; };
-  return { x0, z0, n, mask, count, at, centre, area: count * CELL * CELL };
+  const solidAt = (q) => { const i = Math.floor((q[0] - x0) / CELL), j = Math.floor((q[1] - z0) / CELL); return i >= 0 && j >= 0 && i < n && j < n && isSolid(i, j); };   // inside a block? (cached by cell)
+  return { x0, z0, n, mask, count, at, centre, solidAt, area: count * CELL * CELL };
 }
 // metres from each yard cell to the nearest cell outside the yard (a chamfer distance) -> Float32Array
 function edgeDist(Y) {
@@ -95,23 +96,35 @@ export function yardLayout(Y, ctx) {
     out.push(drive); linkUp(drive);
   }
   const allRoads = [...roads, ...out];
-  // the quietest spot: farthest from the yard's edge, walls and roads -> a playground there, with benches round it
-  const ed = edgeDist(Y); let best = null;
-  for (let j = 0; j < Y.n; j++) for (let i = 0; i < Y.n; i++) {
-    const k = j * Y.n + i; if (!Y.mask[k]) continue; const q = Y.centre(i, j);
-    let s = Math.min(ed[k], blockDist(q)); for (const r of allRoads) s = Math.min(s, nearestOn(loopOf(r), q).d - r.w / 2);
-    if (!best || s > best.s) best = { s, q };
+  // the playground: somewhere with room (at least 5 m from the yard's edge, walls and roads; more than 12 m counts no
+  // more), and of those the spot the blocks enclose most (looking out 12 ways, how many meet a block within 60 m; then
+  // the one they are most evenly round), so it is between the buildings rather than out where the yard opens up past
+  // their ends. In a narrow strip (between two
+  // driveways) its pieces stand in a row along the strip, else in a ring; benches by it.
+  const ed = edgeDist(Y), cell = (q) => { const i = Math.floor((q[0] - Y.x0) / CELL), j = Math.floor((q[1] - Y.z0) / CELL); return i >= 0 && j >= 0 && i < Y.n && j < Y.n ? j * Y.n + i : -1; };
+  const room = (q) => { const k = cell(q); if (k < 0 || !Y.mask[k]) return -1; let s = Math.min(ed[k], blockDist(q)); for (const r of allRoads) s = Math.min(s, nearestOn(loopOf(r), q).d - r.w / 2); return s; };
+  // how enclosed q is: how many of 12 looks meet a block within 60 m, and how far the middle of what they meet is from q
+  // (0: the blocks are evenly round it)
+  const enclosed = (q) => { let hits = 0, m = [0, 0]; for (let k = 0; k < 12; k++) { const a = (k / 12) * Math.PI * 2, d = [Math.cos(a), Math.sin(a)]; for (let t = 6; t <= 60; t += 6) { const h = V.add(q, V.mul(d, t)); if (Y.solidAt ? Y.solidAt(h) : F.dist(h) <= 0) { hits++; m = V.add(m, h); break; } } } return { e: hits, bal: hits ? V.dist(V.mul(m, 1 / hits), q) : 1e9 }; };
+  let best = null;
+  for (let j = 0; j < Y.n; j++) for (let i = 0; i < Y.n; i++) {          // every cell for room; a scattered third for the (dearer) enclosure
+    const k = j * Y.n + i; if (!Y.mask[k] || ed[k] < 5 || (i * 7 + j * 13) % 3) continue; const q = Y.centre(i, j), s = room(q); if (s < 5) continue;
+    const c = { q, s, ...enclosed(q) }; if (!best || c.e > best.e || (c.e === best.e && c.bal < best.bal - 0.5) || (c.e === best.e && Math.abs(c.bal - best.bal) <= 0.5 && Math.min(c.s, 12) > Math.min(best.s, 12))) best = c;
   }
-  if (best && best.s >= 7) {
-    const C = best.q, rad = Math.min(best.s - 2.5, 7), names = ["play_0", "play_1", "play_2", "play_3", "play_4", "play_5"].sort(() => R() - 0.5).slice(0, 3 + Math.floor(R() * 3)), a0 = R() * 6.283;
-    names.forEach((nm, i) => {
-      const t = a0 + (i / names.length) * 6.283, r = nm === "play_4" ? 0 : rad * (0.45 + 0.25 * R()), q = V.add(C, [Math.cos(t) * r, Math.sin(t) * r]);
-      const back = V.norm(V.sub(q, C)); items.push({ name: nm, p: [q[0], 0, q[1]], a: V.len(back) > 0.5 ? [-back[1], back[0]] : [1, 0], paint: [0, 0, 0], r: R() });
-    });
-    for (let i = 0, nb = 2 + Math.floor(R() * 2); i < nb; i++) {
-      const t = a0 + Math.PI / nb + (i / nb) * 6.283, q = V.add(C, [Math.cos(t) * (rad + 2), Math.sin(t) * (rad + 2)]), back = V.norm(V.sub(q, C));
-      if (Y.at(q)) items.push({ name: ["bench_0", "bench_1", "bench_2"][Math.floor(R() * 3)], p: [q[0], 0, q[1]], a: [-back[1], back[0]], paint: [0, 0, 0], r: R() });
+  if (best) {
+    const C = best.q, names = ["play_0", "play_1", "play_2", "play_3", "play_4", "play_5"].sort(() => R() - 0.5).slice(0, 3 + Math.floor(R() * 3)), spots = [];
+    if (best.s >= 9) {                            // room all round: a ring of pieces
+      const rad = Math.min(best.s - 2.5, 7), a0 = R() * 6.283;
+      names.forEach((nm, i) => { const t = a0 + (i / names.length) * 6.283, r = nm === "play_4" ? 0 : rad * (0.45 + 0.25 * R()); spots.push(V.add(C, [Math.cos(t) * r, Math.sin(t) * r])); });
+      for (let i = 0, nb = 2 + Math.floor(R() * 2); i < nb; i++) { const t = a0 + Math.PI / nb + (i / nb) * 6.283, q = V.add(C, [Math.cos(t) * (rad + 2), Math.sin(t) * (rad + 2)]); if (Y.at(q)) items.push({ name: ["bench_0", "bench_1", "bench_2"][Math.floor(R() * 3)], p: [q[0], 0, q[1]], a: (() => { const b = V.norm(V.sub(q, C)); return [-b[1], b[0]]; })(), paint: [0, 0, 0], r: R() }); }
+    } else {                                      // a strip: along whichever way it runs furthest with room
+      let ax = [1, 0], far = -1;
+      for (let k = 0; k < 8; k++) { const a = (k / 8) * Math.PI, d = [Math.cos(a), Math.sin(a)]; let n = 0; for (let t = 2; t <= 20; t += 2) { if (room(V.add(C, V.mul(d, t))) >= 3.5 && room(V.sub(C, V.mul(d, t))) >= 3.5) n = t; else break; } if (n > far) { far = n; ax = d; } }
+      const L = Math.min(far, 4.5 * (names.length - 1) / 2 + 1); names.forEach((_, i) => spots.push(V.add(C, V.mul(ax, names.length > 1 ? -L + (2 * L * i) / (names.length - 1) : 0))));
+      const side = V.left(ax), off = Math.max(2, best.s - 1.5);
+      for (const k of [1, -1]) { const q = V.add(C, V.mul(side, k * off)); if (room(q) > 0.8) items.push({ name: ["bench_0", "bench_1", "bench_2"][Math.floor(R() * 3)], p: [q[0], 0, q[1]], a: [-side[1] * k, side[0] * k], paint: [0, 0, 0], r: R() }); }
     }
+    names.forEach((nm, i) => { const q = spots[i], back = V.norm(V.sub(q, C)); items.push({ name: nm, p: [q[0], 0, q[1]], a: V.len(back) > 0.5 ? [-back[1], back[0]] : [1, 0], paint: [0, 0, 0], r: R() }); });
   }
   // a kiosk where the yard meets one of the town's roads, its back to the yard
   if (roads.length && R() < 0.8) {

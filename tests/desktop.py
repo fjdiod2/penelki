@@ -27,7 +27,10 @@ def serve():
 
 def chromium(p):
     exes = glob.glob(os.path.expanduser("~/Library/Caches/ms-playwright/chromium-*/chrome-mac*/*.app/Contents/MacOS/*"))
-    return p.chromium.launch(executable_path=exes[0] if exes else None, headless=os.environ.get("HEADED") is None, args=["--window-size=1460,900", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"])
+    # hidden runs draw with SwiftShader (the same everywhere, for the comparisons); HEADED=1 runs use the real GPU
+    headed = os.environ.get("HEADED") is not None
+    soft = [] if headed else ["--use-angle=swiftshader", "--enable-unsafe-swiftshader"]
+    return p.chromium.launch(executable_path=exes[0] if exes else None, headless=not headed, args=["--window-size=1460,900", *soft])
 
 
 def run():

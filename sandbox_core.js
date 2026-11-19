@@ -34,7 +34,10 @@ const { W, H, PL } = kit;
 const ground = createGround(scene, FOG, SKY), trees = createTrees(scene);
 // props (benches, lamps, cars, poles...): the simulator's props.json. The game also works without them (not deployed yet)
 let props = null; const propAttach = {};
-try { props = await createProps(FOG); const PJ = await fetch("./assets/props/props.json").then((r) => r.json()); for (const [k, v] of Object.entries(PJ.props)) if (v.attach) propAttach[k] = v.attach; }
+// They come from the CDN (DigitalOcean Spaces, bucket panelki-assets, versioned: a new set of models goes to v2/);
+// ?localprops loads them from assets/props/ instead (not in git), for trying out new models before uploading them.
+const PROPS = Q.has("localprops") ? "./assets/props/" : "https://panelki-assets.fra1.cdn.digitaloceanspaces.com/v1/props/";
+try { props = await createProps(FOG, PROPS); const PJ = await fetch(PROPS + "props.json").then((r) => r.json()); for (const [k, v] of Object.entries(PJ.props)) if (v.attach) propAttach[k] = v.attach; }
 catch (e) { props = null; console.info("props not loaded:", e.message); }
 const cityRoot = new THREE.Group(), hullGroup = new THREE.Group(), roofGroup = new THREE.Group(), previewRoot = new THREE.Group(), overlayRoot = new THREE.Group();
 scene.add(cityRoot, hullGroup, roofGroup, previewRoot, overlayRoot);

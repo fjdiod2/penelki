@@ -57,9 +57,9 @@ const FRAG = `
     #include <colorspace_fragment>
   }`;
 
-export async function createProps(fog) {
-  const P = await fetch("./assets/props/props.json").then((r) => r.json());
-  const TL = new THREE.TextureLoader(), tex = (f) => { const t = TL.load("./assets/props/" + f); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; t.wrapS = t.wrapT = THREE.RepeatWrapping; return t; };
+export async function createProps(fog, base = "./assets/props/") {     // base: where props.json and its textures are (a CDN, say)
+  const P = await fetch(base + "props.json").then((r) => r.json());
+  const TL = new THREE.TextureLoader(), tex = (f) => { const t = TL.load(base + f); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; t.wrapS = t.wrapT = THREE.RepeatWrapping; return t; };
   const raw = (f) => { const t = tex(f); t.colorSpace = THREE.NoColorSpace; return t; };      // painted textures hold a mask, not a colour
   const mat = new THREE.ShaderMaterial({ vertexShader: VERT, fragmentShader: FRAG, side: THREE.FrontSide,
     uniforms: { tWood: { value: tex("wood_paint_atlas.png") }, tPlanks: { value: tex("planks.png") }, tConc: { value: tex("concrete.png") }, tMetal: { value: tex("metal_paint_atlas.png") }, tGalv: { value: tex("galv.png") }, tPole: { value: tex("pole_concrete.png") }, tPoleW: { value: tex("pole_wood.png") }, tKiosk: { value: tex("kiosk.png") }, tSand: { value: tex("sand.png") }, tCar: { value: (() => { const t = tex("car.png"); t.premultiplyAlpha = false; t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping; return t; })() },

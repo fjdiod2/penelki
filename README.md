@@ -21,6 +21,15 @@ each; run them before a release, not after every change). They need Python with 
     python3 tests/touch.py check       # fingers on a phone-sized page: camera gestures, tap to place, handles, extrude
     python3 tests/desktop.py record    # after an intended change: record the new baseline
 
+## Props on the CDN
+
+The props (benches, lamps, cars, poles... from the train simulator's `props.json` and textures) are not in git: they
+are on DigitalOcean Spaces, bucket `panelki-assets` (fra1), served by its CDN at
+`https://panelki-assets.fra1.cdn.digitaloceanspaces.com/v1/props/`. Files there are cached for a year, so a new set of
+models goes into a new folder (`v2/props/`) and `PROPS` in `sandbox_core.js` is pointed at it. To try new models
+before uploading them, put them in `assets/props/` (ignored by git) and open the game with `?localprops`. The Spaces
+keys are in `.env` (ignored by git).
+
 ## Files
 
 - `index.html` — the page and its interface styles

@@ -27,7 +27,7 @@ def serve():
 
 def chromium(p):
     exes = glob.glob(os.path.expanduser("~/Library/Caches/ms-playwright/chromium-*/chrome-mac*/*.app/Contents/MacOS/*"))
-    return p.chromium.launch(executable_path=exes[0] if exes else None, headless=False, args=["--window-size=1460,900"])
+    return p.chromium.launch(executable_path=exes[0] if exes else None, headless=os.environ.get("HEADED") is None, args=["--window-size=1460,900", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"])
 
 
 def run():
@@ -178,7 +178,7 @@ def run():
         path([(-30, 0, -10), (10, 0, -10)], hold=0.3, steps=20)
         g1 = geom(1); path([(g1["m"][0], g1["top"], g1["m"][1]), (g1["m"][0] + 1, g1["top"], g1["m"][1])], hold=0.3)
         tr = pg.evaluate("window.__sandbox.S().trees")
-        trace.append({"step": "trees", "seen": seen, "trees": {"some": len(tr) > 3, "on": sorted(set(str(t.get("b")) for t in tr))}})
+        trace.append({"step": "trees", "seen": seen, "trees": {"some": len(tr) > 3, "on a roof": any(t.get("b") for t in tr), "on the ground": any(not t.get("b") for t in tr)}})
 
         # ---- save, reload
         pg.evaluate("() => dispatchEvent(new Event('beforeunload'))"); time.sleep(0.3)

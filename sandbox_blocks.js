@@ -108,7 +108,31 @@ export async function createBlockKit(fog) {
     // q, n, y, h: the middle of its face on the plan, the direction into the building, its foot and height (for merging)
     return { pc, m: new THREE.Matrix4().makeBasis(X, Y, Z).setPosition(a[0], y, a[1]), win, v2, door, rnd, q: V.lerp(a, b, 0.5), n: V.left(u), y, h: PIECE_H[pc] ?? H * zs, trim: pc in PIECE_H, pa: a, pb: b };
   }
-  const PIECE_H = { plinth: PL, plinth_end: PL, parapet: 0.6, parapet_end: 0.6, pipe: 0.4 };      // not full storey panels: in a shared wall plane these always give way
+  const PIECE_H = { plinth: PL, plinth_end: PL, parapet: 0.6, parapet_end: 0.6, pipe: 0.4 };
+  // a plain panel, 3 x 3 m (a square of the wall's concrete, with its seams and grime), drawn as the others are: for the
+  // undersides of blocks standing out over nothing and the ceilings and floors of holes. (3 m wide: none of the
+  // window panels' streaks; its face looks along -y, as a wall piece's)
+  {
+    const SP = 3, g = new THREE.BufferGeometry(), e = A.geo.end.mat, mat = e.clone();
+    g.setAttribute("position", new THREE.Float32BufferAttribute([0, 0, 0, SP, 0, 0, SP, 0, SP, 0, 0, SP], 3));
+    g.setAttribute("uv", new THREE.Float32BufferAttribute([0, 0, 1, 0, 1, 1, 0, 1], 2)); g.setAttribute("mid", new THREE.Float32BufferAttribute([0, 0, 0, 0], 1));
+    g.setIndex([0, 1, 2, 0, 2, 3]); g.computeBoundingSphere();
+    mat.uniforms = Object.assign({}, e.uniforms, { psize: { value: new THREE.Vector2(SP, SP) } });   // (the textures and fog shared)
+    A.geo.slab = { g, pw: SP, ph: SP, mat };
+  }
+  // panels over a rectangle of a block (s0 .. s1 along u, w0 .. w1 across, lf = V.left(u)) at height y, facing down
+  // (an underside, a ceiling) or up (a floor), about 3 m each
+  function slabs(out, c0, u, lf, s0, s1, w0, w1, y, down, rnd) {
+    const n = Math.max(1, Math.round((s1 - s0) / 3)), m = Math.max(1, Math.round((w1 - w0) / 3)), ds = (s1 - s0) / n, dw = (w1 - w0) / m;
+    for (let i = 0; i < n; i++) for (let j = 0; j < m; j++) {
+      const sa = s0 + i * ds, wa = w0 + j * dw;
+      X.set(u[0], 0, u[1]).multiplyScalar(ds / 3);
+      if (down) { Y.set(0, 1, 0); Z.set(-lf[0], 0, -lf[1]).multiplyScalar(dw / 3); }     // (the face toward -y: down; z across, toward -lf)
+      else { Y.set(0, -1, 0); Z.set(lf[0], 0, lf[1]).multiplyScalar(dw / 3); }
+      const o = V.add(V.add(c0, V.mul(u, sa)), V.mul(lf, down ? wa + dw : wa));
+      out.push({ pc: "slab", m: new THREE.Matrix4().makeBasis(X, Y, Z).setPosition(o[0], y, o[1]), win: 0, v2: 0, door: 0, rnd: rnd(), y });
+    }
+  }      // not full storey panels: in a shared wall plane these always give way
   function flat(pc, o, dir, y) {                  // a roof box: x along dir, y to the V.left of it
     X.set(dir[0], 0, dir[1]); Y.set(dir[1], 0, -dir[0]);
     return { pc, m: new THREE.Matrix4().makeBasis(X, Y, UP).setPosition(o[0], y, o[1]), win: 0, v2: 0, door: 0, rnd: 0, q: o, y, roof: true };
@@ -165,6 +189,9 @@ export async function createBlockKit(fog) {
     }
     const lay = { out, base, top, Lp, Rp, closed: b.closed, ground, fin: A.FINISH[b.fin] || A.FINISH.concrete };
     if (!b.closed && b.pts.length === 2 && b.cuts && b.cuts.length) applyCuts(b, lay, { D, FL, pl, r, pick });
+    else if (!ground && !b.closed && b.pts.length === 2) {          // standing out over nothing: panels underneath
+      const u = V.norm(V.sub(b.pts[1], b.pts[0])); slabs(out, b.pts[0], u, V.left(u), 0, V.dist(b.pts[0], b.pts[1]), -D / 2, D / 2, base + 0.01, true, r); lay.underCells = [];
+    }
     return lay;
   }
   // ---- holes dug into a straight block. A cut dug from a long wall: { side: +1 (left wall) / -1 (right wall), s0, s1
@@ -236,7 +263,7 @@ export async function createBlockKit(fog) {
         if (solid(i + 1, j, f)) vface(P(ss[i + 1], ws[j]), P(ss[i + 1], ws[j + 1]), f, u, false);
         if (solid(i, j - 1, f)) vface(P(ss[i], ws[j]), P(ss[i + 1], ws[j]), f, V.mul(lf, -1), true);
         if (solid(i, j + 1, f)) vface(P(ss[i], ws[j + 1]), P(ss[i + 1], ws[j + 1]), f, lf, true);
-        if (solid(i, j, f + 1)) quads.push({ p: rect, y: yTop(f) - 0.02 });                                      // ceiling
+        if (solid(i, j, f + 1)) quads.push({ p: rect, y: yTop(f) - 0.02, ceiling: true });                       // ceiling
         if (solid(i, j, f - 1)) quads.push({ p: rect, y: y0 + f * H + 0.02, roof: openUp(i, j, f) });           // floor
         continue;
       }
@@ -248,7 +275,10 @@ export async function createBlockKit(fog) {
       if (!solid(i, j, f - 1)) hull.push(rect.map((q) => [q[0], yb, q[1]]));
     }
     const cells = (f) => { const res = []; for (let i = 0; i < NI; i++) for (let j = 0; j < NJ; j++) if (!isEmpty(i, j, f)) res.push([P(ss[i], ws[j]), P(ss[i + 1], ws[j]), P(ss[i + 1], ws[j + 1]), P(ss[i], ws[j + 1])]); return res; };
-    lay.out = out; lay.quads = quads; lay.hullQuads = hull; lay.roofCells = cells(FL - 1); lay.underCells = lay.ground ? null : cells(0);
+    // the underside, and the ceilings and floors of holes (not those open to the sky: roofs): panels
+    for (const q of quads) if (!q.roof) { const [sa, wa] = loc(q.p[0]), [sb, wb] = loc(q.p[2]); slabs(out, c0, u, lf, Math.min(sa, sb), Math.max(sa, sb), Math.min(wa, wb), Math.max(wa, wb), q.y, q.ceiling, r); q.panel = true; }
+    if (!lay.ground) for (const c of cells(0)) { const [sa, wa] = loc(c[0]), [sb, wb] = loc(c[2]); slabs(out, c0, u, lf, sa, sb, Math.min(wa, wb), Math.max(wa, wb), lay.base + 0.01, true, r); }
+    lay.out = out; lay.quads = quads; lay.hullQuads = hull; lay.roofCells = cells(FL - 1); lay.underCells = lay.ground ? null : [];
   }
 
   // ---- all pieces of many blocks as one InstancedMesh per piece type
@@ -293,7 +323,7 @@ export async function createBlockKit(fog) {
     grp.add(new THREE.Mesh(geom(p, i), roofMat));
     const q = [], j = [];
     if (!lay.ground) { if (lay.underCells) for (const c of lay.underCells) quad(c, lay.base + 0.01, q, j); else ribbon(lay.Lp, lay.Rp, lay.closed, lay.base + 0.01, q, j); }
-    for (const h of lay.quads || []) if (!h.roof) quad(h.p, h.y, q, j);                     // a hole's ceiling and floor
+    for (const h of lay.quads || []) if (!h.roof && !h.panel) quad(h.p, h.y, q, j);         // a hole's ceiling and floor (if not panelled)
     if (j.length) grp.add(new THREE.Mesh(geom(q, j), underMat));
     return grp;
   }

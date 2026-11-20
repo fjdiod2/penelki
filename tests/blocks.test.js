@@ -8,7 +8,7 @@ import { V, offsetPoly, nearestOnPath, subPath, pathLen, cutRects } from "../san
 const kit = await blockKit();
 const { W, H, PL, E4 } = kit;
 const count = (lay, pred) => lay.out.filter(typeof pred === "string" ? (p) => p.pc === pred : pred).length;
-const STOREY = (p) => !p.roof && !/plinth|parapet|pipe/.test(p.pc);
+const STOREY = (p) => !p.roof && !/plinth|parapet|pipe|slab/.test(p.pc);
 const block = (o = {}) => ({ id: 1, pts: [[0, 0], [10 * W, 0]], closed: false, D: 12, fl: 5, fin: "concrete", seed: 7, parent: null, ...o });
 const near = (a, b, e = 1e-6) => Math.abs(a - b) < e;
 
@@ -139,4 +139,21 @@ test("a dig whose edge cuts through a panel of the next wall keeps that panel's 
   const b2 = block({ cuts: [{ side: 1, s0: 0, s1: W, f0: 0, f1: 5, d: 1.6 }] }), l2 = kit.layout(b2, 0);
   const ends = l2.out.filter((p) => p.pa && Math.abs(p.q[0]) < 0.01 && Math.abs(p.y - (PL + 2 * H)) < 0.01 && STOREY(p)).map((p) => [Math.min(p.pa[1], p.pb[1]), Math.max(p.pa[1], p.pb[1])]).sort((a, c) => a[0] - c[0]);
   const span = ends.reduce((s, r) => s + r[1] - r[0], 0); assert.ok(near(span, 12 - 1.6, 0.01), `end wall covered but for the dig: ${span}`);
+});
+
+// the plain panels under blocks standing out over nothing, and lining the ceilings and floors of holes
+const slabsOf = (lay) => lay.out.filter((p) => p.pc === "slab").map((p) => { const e = p.m.elements; return { o: [e[12], e[13], e[14]], face: -Math.sign(e[5]), x: Math.hypot(e[0], e[2]) * 3, z: Math.hypot(e[8], e[10]) * 3 }; });
+test("a block standing out over nothing has panels under it, covering it, facing down; a block on the ground has none", () => {
+  assert.equal(slabsOf(kit.layout(block(), 0)).length, 0);
+  const lay = kit.layout(block({ at: { id: 9, f: 3 } }), 20), sl = slabsOf(lay);
+  assert.ok(sl.length >= 4 * 10 && sl.every((q) => q.face === -1 && Math.abs(q.o[1] - 20.01) < 1e-6));
+  const area = sl.reduce((a, q) => a + q.x * q.z, 0); assert.ok(Math.abs(area - 10 * W * 12) < 1e-6, `area ${area}`);
+  assert.equal(lay.underCells.length, 0, "(no plain underside drawn as well)");
+});
+test("a hole's ceiling gets panels facing down, its floor panels facing up; a floor open to the sky stays a roof", () => {
+  const lay = kit.layout(block({ cuts: [{ side: 1, s0: 3 * W, s1: 6 * W, f0: 1, f1: 3, d: 12 }] }), 0), sl = slabsOf(lay);
+  assert.ok(sl.some((q) => q.face === -1) && sl.some((q) => q.face === 1));
+  assert.ok(lay.quads.filter((q) => !q.roof).every((q) => q.panel));
+  const top = kit.layout(block({ cuts: [{ side: 1, s0: 0, s1: 3 * W, f0: 4, f1: 5, d: 6 }] }), 0);
+  assert.ok(top.quads.some((q) => q.roof && !q.panel));
 });

@@ -374,5 +374,5 @@ export async function createBlockKit(fog) {
     });
   }
 
-  return { W, H, PL, E4, mergeLays, FIN: A.FIN, FINISH: A.FINISH, layout, buildMeshes, disposeGroup, roofMesh, hullMesh, overlay };
+  return { pieceMaterial: (pc) => A.geo[pc].mat.clone(), W, H, PL, E4, mergeLays, FIN: A.FIN, FINISH: A.FINISH, layout, buildMeshes, disposeGroup, roofMesh, hullMesh, overlay };
 }

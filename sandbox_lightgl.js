@@ -11,6 +11,7 @@
 //        flat: for hills, the bake would take the ground's height at each spot instead of 0)
 import * as THREE from "three";
 import { SUN, SUN_XZ, TAN_E, LAYERS, DIRS, SKY_STEPS, SKY_GROW, AERIAL } from "./sandbox_light.js";
+import { facadePatch } from "./sandbox_facade.js";
 
 const f = (x) => (Number.isInteger(x) ? x.toFixed(1) : String(x));
 const DISK = Array.from({ length: 8 }, (_, k) => { const r = Math.sqrt((k + 0.5) / 8), a = k * 2.3999632; return `vec2(${(r * Math.cos(a)).toFixed(4)}, ${(r * Math.sin(a)).toFixed(4)})`; }).join(", ");
@@ -246,6 +247,7 @@ export function createTownLight(renderer) {
         v = "varying vec3 vTW; varying vec3 vTN;\n" + v.replace("vM = m.xyz;", "vM = m.xyz; vTW = (modelMatrix * m).xyz;" +
           (wall ? " { vec3 y = (modelMatrix * vec4(instanceMatrix[1].xyz, 0.0)).xyz; y.y = 0.0; vTN = dot(y, y) > 1e-6 ? -normalize(y) : vec3(0.0); }" : " vTN = vec3(0.0);"));
         fr = withChunk(fr, "varying vec3 vTW; varying vec3 vTN;\n").replace(LIT, "townLitWall(vTW, N, vTN, sun)").replace(OUT, "col *= TL_tint; if (tlDbg > 0.5) col = TL_dbg; $&");
+        if (wall) fr = facadePatch(fr);                    // (streaks, tone, calm far off: sandbox_facade.js)
       } else if (/varying vec3 vW;/.test(fr) && OUT.test(fr) && !fr.includes("townFactor")) {
         fr = withChunk(fr).replace(OUT, "{ float tlf = townFactorGround(vW); col *= tlf * TL_tint; if (tlDbg > 0.5) col = TL_dbg; } $&");
       } else return;

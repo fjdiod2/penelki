@@ -124,3 +124,10 @@ test("patching: the haze in the patched shaders and the water becomes the aerial
   const water = new THREE.ShaderMaterial({ uniforms: { tDiffuse: { value: null } }, vertexShader: "void main() {}", fragmentShader: "varying vec3 vW; void main() { vec3 col = vec3(1.0); gl_FragColor = vec4(mix(col, fogC, smoothstep(fogR.x, fogR.y, length(cameraPosition - vW))), 1.0); }" });
   L.patch(water); assert.ok(water.fragmentShader.includes("townAerial(col, fogC, smoothstep(fogR.x, fogR.y, length(cameraPosition - vW)))") && !water.fragmentShader.includes("townVis"));
 });
+test("facades: the real building shader gets the streaks and tone, the seams' fade and the windows' calm far off", async () => {
+  const { blockKit } = await import("./env.js"), kit = await blockKit(), L = createTownLight({ getRenderTarget: () => null });
+  const m = kit.pieceMaterial("window"); L.patch(m); const fr = m.fragmentShader;
+  assert.ok(fr.includes("facadeStreaks(a, vTW.y, vVar.y, vVar.x)") && fr.includes("col *= facadeTone("), "streaks and tone (apartments.js's grime line found)");
+  assert.ok(fr.includes("col, max(f, FA_seam));"), "seams fade (its seams line found)");
+  assert.ok(fr.includes("textureLod(tWin, vec2(0.5), 16.0)") && fr.indexOf("textureLod(tWin") < fr.indexOf("float lit = townLitWall"), "windows calm, before the light");
+});

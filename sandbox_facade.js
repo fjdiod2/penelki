@@ -11,7 +11,7 @@
 //   faA: streaks: share of columns with one, darkness, longest (m); tone: how uneven
 //   faB: tone: patch size (m), dirt on the lowest floors; calm: starts / is full when a pixel covers this much wall (m)
 //   faC: calm: how far windows go to their average
-export const FACADE = { faA: [0.45, 0.55, 50, 0.22], faB: [37, 0.12, 0.15, 0.6], faC: [0.75, 0, 0, 0] };
+export const FACADE = { faA: [0.45, 1, 50, 0.4], faB: [37, 0.12, 0.15, 0.6], faC: [0.75, 0, 0, 0] };
 const GLSL = `
   uniform vec4 faA; uniform vec4 faB; uniform vec4 faC;
   float faH(vec2 p) { p = fract(p * vec2(0.1031, 0.1030)); p += dot(p, p.yx + 33.33); return fract((p.x + p.y) * p.y); }

@@ -6,31 +6,48 @@
 // When the clouds are off the scene is drawn straight to the screen as before.
 // The cloud is worked out at half the screen's resolution (a quarter on phones): it is soft, and a full-resolution pass
 // puts it over the picture taking each pixel's cloud from the nearby low-resolution ones at about its own depth, so the
-// edges of buildings stay sharp (no halo of cloud across them).
+// edges of buildings stay sharp (no halo of cloud across them). Each low-resolution pixel works its cloud out to the
+// nearest thing under it (of the full-resolution pixels it covers; kept in lowD as a distance): one straddling a
+// building's outline does not look past the building, and a facade pixel there finds a neighbour at its own depth, so
+// the cloud behind a tower does not smear onto its walls.
 import * as THREE from "three";
 
 export function createClouds(renderer, fog) {
   const size = new THREE.Vector2(), coarse = matchMedia("(pointer: coarse)").matches;
   const SCALE = coarse ? 4 : 2;
-  let rt = null, low = null;
+  let rt = null, low = null, lowD = null;
   function target() {
     renderer.getDrawingBufferSize(size);
     if (rt && rt.width === size.x && rt.height === size.y) return rt;
-    if (rt) { rt.dispose(); low.dispose(); }
+    if (rt) { rt.dispose(); low.dispose(); lowD.dispose(); }
     rt = new THREE.WebGLRenderTarget(size.x, size.y, { type: THREE.HalfFloatType, samples: coarse ? 0 : 4, depthTexture: new THREE.DepthTexture(size.x, size.y) });
     low = new THREE.WebGLRenderTarget(Math.ceil(size.x / SCALE), Math.ceil(size.y / SCALE), { type: THREE.HalfFloatType, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, depthBuffer: false });
+    lowD = new THREE.WebGLRenderTarget(low.width, low.height, { type: THREE.HalfFloatType, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, depthBuffer: false });
     return rt;
   }
+  // the nearest of the depths under each low-resolution pixel (its corners' full-resolution pixels), as a distance along
+  // the view (as distAt below; 1e4: sky)
+  const near = new THREE.ShaderMaterial({
+    depthTest: false, depthWrite: false,
+    uniforms: { tDepth: { value: null }, full: { value: new THREE.Vector2() }, hf: { value: (SCALE - 1) / 2 }, nf: { value: new THREE.Vector2() } },
+    vertexShader: "varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }",
+    fragmentShader: `
+      uniform sampler2D tDepth; uniform vec2 full; uniform float hf; uniform vec2 nf; varying vec2 vUv;
+      void main() {
+        float d = 1.0;
+        for (int k = 0; k < 4; k++) { vec2 o = vec2(k & 1, k >> 1) * 2.0 - 1.0; d = min(d, texture2D(tDepth, vUv + o * hf * full).x); }
+        float z = d * 2.0 - 1.0; gl_FragColor = vec4(d >= 1.0 ? 1e4 : 2.0 * nf.x * nf.y / (nf.y + nf.x - z * (nf.y - nf.x)), 0.0, 0.0, 1.0);
+      }` });
   const mat = new THREE.ShaderMaterial({
     depthTest: false, depthWrite: false,
     uniforms: {
-      tColor: { value: null }, tDepth: { value: null }, projInv: { value: new THREE.Matrix4() }, camWorld: { value: new THREE.Matrix4() }, camPos: { value: new THREE.Vector3() },
+      tColor: { value: null }, tDepth: { value: null }, tNear: { value: null }, projInv: { value: new THREE.Matrix4() }, camWorld: { value: new THREE.Matrix4() }, camPos: { value: new THREE.Vector3() },
       base: { value: 300 }, thick: { value: 140 }, cover: { value: 0.7 }, time: { value: 0 }, steps: { value: coarse ? 12 : 20 },
       fogC: { value: fog.color }, fogR: { value: new THREE.Vector2(fog.near, fog.far) },
     },
     vertexShader: "varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }",
     fragmentShader: `
-      uniform sampler2D tColor; uniform sampler2D tDepth; uniform mat4 projInv; uniform mat4 camWorld; uniform vec3 camPos;
+      uniform sampler2D tColor; uniform sampler2D tDepth; uniform sampler2D tNear; uniform mat4 projInv; uniform mat4 camWorld; uniform vec3 camPos;
       uniform float base; uniform float thick; uniform float cover; uniform float time; uniform int steps; uniform vec3 fogC; uniform vec2 fogR;
       varying vec2 vUv;
       const vec3 SUN = vec3(0.37, 0.56, 0.74);
@@ -57,9 +74,9 @@ export function createClouds(renderer, fog) {
         return remap(d, detail * 0.45, 1.0);                                          // frayed edges
       }
       void main() {
-        float d = texture2D(tDepth, vUv).x;
-        vec4 v = projInv * vec4(vUv * 2.0 - 1.0, d * 2.0 - 1.0, 1.0); v /= v.w;
-        vec3 w = (camWorld * v).xyz, dir = normalize(w - camPos); float far = d >= 1.0 ? 9000.0 : length(w - camPos);
+        float lin = texture2D(tNear, vUv).x;                                           // the nearest thing under this pixel, along the view
+        vec4 v = projInv * vec4(vUv * 2.0 - 1.0, 1.0, 1.0); v /= v.w; v.xyz *= lin / max(-v.z, 1e-6);
+        vec3 w = (camWorld * vec4(v.xyz, 1.0)).xyz, dir = normalize(w - camPos); float far = lin >= 9999.0 ? 9000.0 : length(w - camPos);
         // the stretch of the line of sight inside the slab
         float lo = base, hi = base + thick * 1.4, t0 = 0.0, t1 = -1.0;
         if (abs(dir.y) < 1e-4) { if (camPos.y >= lo && camPos.y <= hi) t1 = far; }
@@ -88,20 +105,22 @@ export function createClouds(renderer, fog) {
   // low-resolution pixels, each weighted by how near its depth is to this pixel's
   const comp = new THREE.ShaderMaterial({
     depthTest: false, depthWrite: false,
-    uniforms: { tColor: { value: null }, tDepth: { value: null }, tCloud: { value: null }, lowSize: { value: new THREE.Vector2() }, nf: { value: new THREE.Vector2() }, dim: { value: 0 } },
+    uniforms: { tColor: { value: null }, tDepth: { value: null }, tCloud: { value: null }, tNear: { value: null }, lowSize: { value: new THREE.Vector2() }, nf: { value: new THREE.Vector2() }, dim: { value: 0 } },
     vertexShader: "varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }",
     fragmentShader: `
-      uniform sampler2D tColor; uniform sampler2D tDepth; uniform sampler2D tCloud; uniform vec2 lowSize; uniform vec2 nf; uniform float dim; varying vec2 vUv;
+      uniform sampler2D tColor; uniform sampler2D tDepth; uniform sampler2D tCloud; uniform sampler2D tNear; uniform vec2 lowSize; uniform vec2 nf; uniform float dim; varying vec2 vUv;
       float distAt(vec2 uv) { float d = texture2D(tDepth, uv).x; if (d >= 1.0) return 9000.0; float z = d * 2.0 - 1.0; return 2.0 * nf.x * nf.y / (nf.y + nf.x - z * (nf.y - nf.x)); }   // (depth along the view: cheap, and as good for comparing)
       void main() {
         vec3 scene = texture2D(tColor, vUv).rgb * (1.0 - dim); float D = distAt(vUv);
-        vec2 p = vUv * lowSize - 0.5, i0 = floor(p + 0.5); vec4 sum = vec4(0.0); float ws = 0.0;
+        vec2 p = vUv * lowSize - 0.5, i0 = floor(p + 0.5); vec4 sum = vec4(0.0), best = vec4(0.0, 0.0, 0.0, 1.0); float ws = 0.0, bestD = 1e9, wmax = 0.0;
         for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++) {            // the 3 x 3 nearest: smooths what is left of the stepping noise
           vec2 c = i0 + vec2(float(x), float(y)), uv = (c + 0.5) / lowSize, dd = c - p;
-          float wb = exp(-dot(dd, dd) / 1.1), wd = exp(-abs(D - distAt(uv)) / (0.04 * D + 1.5)), w = wb * (wd + 1e-4);
-          sum += w * texture2D(tCloud, uv); ws += w;
+          float dn = texture2D(tNear, uv).x, e = abs(min(D, 9000.0) - min(dn, 9000.0));
+          float wb = exp(-dot(dd, dd) / 1.1), wd = exp(-e / (0.04 * D + 1.5)), w = wb * (wd + 1e-4);
+          vec4 cl = texture2D(tCloud, uv); sum += w * cl; ws += w; wmax = max(wmax, wd);
+          if (e < bestD) { bestD = e; best = cl; }
         }
-        vec4 c = sum / max(ws, 1e-6);
+        vec4 c = mix(best, sum / max(ws, 1e-6), smoothstep(0.05, 0.3, wmax));   // none at about its depth: the one nearest it
         gl_FragColor = vec4(scene * c.a + c.rgb, 1.0);
         #include <colorspace_fragment>
       }` });
@@ -114,10 +133,13 @@ export function createClouds(renderer, fog) {
     const u = mat.uniforms; u.tColor.value = r.texture; u.tDepth.value = r.depthTexture; u.projInv.value.copy(camera.projectionMatrixInverse); u.camWorld.value.copy(camera.matrixWorld);
     u.camPos.value.copy(camera.position); u.time.value = t; u.base.value = state.base; u.thick.value = Math.max(60, state.base * 0.45); u.cover.value = state.cover;
     u.fogR.value.set(fog.near, fog.far);
+    const n = near.uniforms; n.tDepth.value = r.depthTexture; n.full.value.set(1 / r.width, 1 / r.height); n.nf.value.set(camera.near, camera.far);
+    quad.material = near; renderer.setRenderTarget(lowD); renderer.render(post, postCam); quad.material = mat;   // the nearest depths
+    u.tNear.value = lowD.texture;
     renderer.setRenderTarget(low); renderer.render(post, postCam);                       // the cloud, at low resolution
-    const c = comp.uniforms; c.tColor.value = r.texture; c.tDepth.value = r.depthTexture; c.tCloud.value = low.texture; c.lowSize.value.set(low.width, low.height);
+    const c = comp.uniforms; c.tColor.value = r.texture; c.tDepth.value = r.depthTexture; c.tCloud.value = low.texture; c.tNear.value = lowD.texture; c.lowSize.value.set(low.width, low.height);
     c.nf.value.set(camera.near, camera.far); c.dim.value = camera.position.y < state.base ? 0.22 * state.cover : 0;   // under a deck the day is dimmer
     quad.material = comp; renderer.setRenderTarget(null); renderer.render(post, postCam); quad.material = mat;
   }
-  return { render, state };
+  return { render, state, materials: { near, cloud: mat, comp } };
 }

@@ -22,7 +22,10 @@ L.patch(piece); L.patch(ground); L.patch(water);
 const { blockKit } = await import("../tests/env.js"), kit = await blockKit(), A = await import("../sandbox_blocks.js");
 // the real building piece shader (apartments.js), as patched: light, facade. (#include lines dropped: three's own)
 const real = kit.pieceMaterial("window"); L.patch(real);
-const sources = { shadow: SHADERS.SHADOW_F, sky: SHADERS.SKY_F, ground_bake: SHADERS.GROUND_F, piece: piece.fragmentShader.replace(/varying /g, "in "), ground: ground.fragmentShader.replace(/varying /g, "in "), water: water.fragmentShader.replace(/varying /g, "in "), building: real.fragmentShader.replace(/varying /g, "in ").replace(/#include <[^>]+>/g, "") };
+globalThis.matchMedia ||= () => ({ matches: false });
+const { createClouds } = await import("../sandbox_sky.js"), CL = createClouds({ getDrawingBufferSize: () => {} }, { color: new THREE.Color(), near: 1, far: 2 }).materials;
+const inc = (m) => m.fragmentShader.replace(/varying /g, "in ").replace(/#include <[^>]+>/g, "");
+const sources = { shadow: SHADERS.SHADOW_F, sky: SHADERS.SKY_F, ground_bake: SHADERS.GROUND_F, piece: piece.fragmentShader.replace(/varying /g, "in "), ground: ground.fragmentShader.replace(/varying /g, "in "), water: water.fragmentShader.replace(/varying /g, "in "), building: real.fragmentShader.replace(/varying /g, "in ").replace(/#include <[^>]+>/g, ""), cloud_near: inc(CL.near), cloud: inc(CL.cloud), cloud_comp: inc(CL.comp) };
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), "glsl-")); let bad = 0;
 for (const [name, src] of Object.entries(sources)) {
   const f = path.join(dir, name + ".frag"); fs.writeFileSync(f, PRE + (/uniform vec3 fogC/.test(src) ? "" : FOG) + src);

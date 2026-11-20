@@ -999,6 +999,7 @@ function bakeLight() {
   lightGrid = heightGrid(prisms, { nMax: matchMedia("(pointer: coarse)").matches ? 512 : 1024 }); townLight.update(lightGrid); townLight.patchAll(scene);
 }
 async function start() {
+  import("./sandbox_debug.js").then((m) => m.debugPanel(townLight));
   if (!(await load())) { ground.sync(); flash(now.input === "touch" ? "Tap the grass for your first block" : "Drag on the grass to lay your first block"); }
   rebuild(); setHaze(atmos.haze); Object.assign(clouds.state, atmos.clouds);
   addEventListener("beforeunload", save);

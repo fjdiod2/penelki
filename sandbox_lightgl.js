@@ -19,8 +19,10 @@ const CONSTS = `
   const float TL_LAY[8] = float[8](${LAYERS.map(f).join(", ")});`;
 
 // aerial perspective (sandbox_light.js aerial): the haze per colour channel, blue first
+// tlAer: the rates for red, green, blue, and how much sooner than the haze the colour shift starts (1: as the haze)
 const AER = `
-  vec3 townAerial(vec3 col, vec3 fc, float f) { return mix(col, fc, 1.0 - pow(vec3(1.0 - clamp(f, 0.0, 1.0)), vec3(${AERIAL.map(f).join(", ")}))); }`;
+  uniform vec4 tlAer;
+  vec3 townAerial(vec3 col, vec3 fc, float f) { float a = 1.0 - pow(1.0 - clamp(f, 0.0, 1.0), tlAer.w); return mix(col, fc, 1.0 - pow(vec3(1.0 - a), tlAer.xyz)); }`;
 // what the materials get: the sun and the sky at a point facing N (x: sky 0 .. 1, y: sun 0 .. 1), as sunAt and skyMix
 const CHUNK = `${AER}
   uniform sampler2D tlH; uniform sampler2D tlS; uniform sampler2D tlW; uniform sampler2D tlU; uniform sampler2D tlGr;
@@ -193,7 +195,7 @@ const FOG_BASIC = `#ifdef USE_FOG
 const withChunk = (src, extra = "", chunk = CHUNK) => { const i = src.indexOf("void main()"); return src.slice(0, i) + extra + chunk + "\n" + src.slice(i); };
 
 export function createTownLight(renderer) {
-  const U = { tlH: { value: null }, tlS: { value: null }, tlW: { value: null }, tlU: { value: null }, tlGr: { value: null }, tlDbg: { value: { sky: 1, sun: 2 }[typeof location === "undefined" ? "" : new URLSearchParams(location.search).get("light")] || 0 }, tlG: { value: new THREE.Vector4() }, tlN: { value: new THREE.Vector4() } };
+  const U = { tlH: { value: null }, tlS: { value: null }, tlW: { value: null }, tlU: { value: null }, tlGr: { value: null }, tlAer: { value: new THREE.Vector4(...AERIAL, 1) }, tlDbg: { value: { sky: 1, sun: 2 }[typeof location === "undefined" ? "" : new URLSearchParams(location.search).get("light")] || 0 }, tlG: { value: new THREE.Vector4() }, tlN: { value: new THREE.Vector4() } };
   const post = new THREE.Scene(), cam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1), quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2));
   quad.frustumCulled = false; post.add(quad);
   const bakeU = { tlH: U.tlH, tlG: U.tlG, tlN: U.tlN };
@@ -233,7 +235,7 @@ export function createTownLight(renderer) {
     if (m.userData.tl) return; m.userData.tl = true;
     if (m.isShaderMaterial && m.uniforms && m.uniforms.tDiffuse) {      // the water: only the aerial perspective (its picture is the lit town)
       if (!HAZE.test(m.fragmentShader)) return; HAZE.lastIndex = 0;
-      m.fragmentShader = withChunk(m.fragmentShader, AER + "\n", "").replace(HAZE, "townAerial(col, fogC, smoothstep(fogR.x, fogR.y, "); m.needsUpdate = true; return;
+      m.fragmentShader = withChunk(m.fragmentShader, AER + "\n", "").replace(HAZE, "townAerial(col, fogC, smoothstep(fogR.x, fogR.y, "); m.uniforms.tlAer = U.tlAer; m.needsUpdate = true; return;
     }
     if (m.isShaderMaterial && m.uniforms && !m.uniforms.tDiffuse) {
       let v = m.vertexShader, fr = m.fragmentShader;

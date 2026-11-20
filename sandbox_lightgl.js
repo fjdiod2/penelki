@@ -31,8 +31,9 @@ const CHUNK = `
   // the sun: the shadow map at 8 spots in a disc 1.5 cells across round the point (turned per pixel), each corrected for
   // where in its cell it is (nearer the sun, the shadows reach higher): soft edges instead of the cells' steps
   const vec2 TL_DISK[8] = vec2[8](${DISK});
-  float townSun(vec3 W, vec3 N) {
-    float c = tlG.z; vec2 o = N.xz * 1.5 * c, P = W.xz + o; float ys = W.y + dot(o, TL_SD) * TL_TANE + 0.2, sun = 0.0;
+  // (off: the direction to step out from a wall before looking up, so a block does not shade itself)
+  float townSun(vec3 W, vec2 off) {
+    float c = tlG.z; vec2 o = off * 1.5 * c, P = W.xz + o; float ys = W.y + dot(o, TL_SD) * TL_TANE + 0.2, sun = 0.0;
     float rot = 6.2831853 * fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715)))), cr = cos(rot), sr = sin(rot);
     mat2 R = mat2(cr, sr, -sr, cr) * (0.75 * c);
     for (int k = 0; k < 8; k++) {
@@ -43,8 +44,8 @@ const CHUNK = `
     }
     return sun / 8.0;
   }
-  float townSky(vec3 W, vec3 N) {
-    float c = tlG.z, sc = 2.0 * c; vec2 nh = N.xz, po = W.xz + nh * 1.5 * sc, uv = (po - tlG.xy) / (tlN.zw * sc);
+  float townSky(vec3 W, vec3 N, vec2 off) {
+    float c = tlG.z, sc = 2.0 * c; vec2 nh = N.xz, po = W.xz + off * 1.5 * sc, uv = (po - tlG.xy) / (tlN.zw * sc);
     if (uv.x <= 0.0 || uv.y <= 0.0 || uv.x >= 1.0 || uv.y >= 1.0) return 1.0;
     ivec2 hq = ivec2(floor((po - tlG.xy) / c)); vec4 bt = hq.x < int(tlN.x) && hq.y < int(tlN.y) ? texelFetch(tlH, hq, 0) : vec4(0.0);
     float lp = tlLayer(W.y - (bt.w > bt.z ? bt.z : bt.x > 0.5 ? 0.0 : bt.y)), k0 = floor(lp), fk = lp - k0, k1 = min(k0 + 1.0, 7.0);
@@ -60,20 +61,23 @@ const CHUNK = `
   // the light as before (0.62 sky, 0.55 sun, 0.08 from above: the same in the open), the sky part scaled by how much
   // sky there is, the sun by the shadows (looked up only on faces turned to the sun), and a little light thrown back off
   // the walls into closed-in places. Shade is a little bluer (TL_tint, multiply the colour by it too)
-  // Ns: the direction the sky and the shadows are looked up for. A facade's small sideways faces (window sides, frames,
-  // balcony sides) take their wall's (townLitWall), as they sit in it and see its strip of sky; the sun still falls on
-  // each face by its own direction N
+  // Ns: the direction the sky is taken for; O: where to look it and the shadows up from (stepping out that way). The
+  // faces of a facade's pieces (townLitWall) all look up in front of their wall: they sit in it (a window recess, a
+  // sill, a frame) and see its strip of sky. Their sideways faces take the wall's sky; their tops and undersides the
+  // sky above / the little below, from there. The sun still falls on each face by its own direction N
   vec3 TL_tint = vec3(1.0);
-  float townLitN(vec3 W, vec3 N, vec3 Ns, vec3 sunD) {
+  float townLitN(vec3 W, vec3 N, vec3 Ns, vec2 O, vec3 sunD) {
     float sd = max(dot(N, sunD), 0.0), sky = 1.0, sun = 1.0;
-    if (tlG.w > 0.5) { sky = townSky(W, Ns); if (sd > 0.0) sun = townSun(W, Ns); }
+    if (tlG.w > 0.5) { sky = townSky(W, Ns, O); if (sd > 0.0) sun = townSun(W, O); }
     float sk = (0.62 + 0.08 * N.y) * sky, sn = 0.55 * sd * sun, bo = 0.1 * (1.0 - sky);
     TL_dbg = tlDbg < 1.5 ? vec3(sky) : sd > 0.0 ? vec3(sun) : vec3(0.15, 0.2, 0.45);
     TL_tint = mix(vec3(0.9, 0.96, 1.1), vec3(1.0), clamp(sn / 0.25, 0.0, 1.0));
     return sk + sn + bo;
   }
-  float townLit(vec3 W, vec3 N, vec3 sunD) { return townLitN(W, N, N, sunD); }
-  float townLitWall(vec3 W, vec3 N, vec3 Nw, vec3 sunD) { return townLitN(W, N, abs(N.y) > 0.7 || dot(Nw, Nw) < 0.5 ? N : Nw, sunD); }
+  float townLit(vec3 W, vec3 N, vec3 sunD) { return townLitN(W, N, N, N.xz, sunD); }
+  float townLitWall(vec3 W, vec3 N, vec3 Nw, vec3 sunD) {
+    bool wall = dot(Nw, Nw) > 0.5; return townLitN(W, N, abs(N.y) > 0.7 || !wall ? N : Nw, wall ? Nw.xz : N.xz, sunD);
+  }
   float townFactor(vec3 W) { return townLit(W, vec3(0.0, 1.0, 0.0), TL_SUN) / (0.7 + 0.55 * TL_SUN.y); }   // (1 in the open sun)
   // the ground and roads: from the baked ground light, one read
   float townFactorGround(vec3 W) {
@@ -99,7 +103,7 @@ const GROUND_F = `${CHUNK}
       vec2 cc = tlG.xy + (vec2(t) + 0.5) * c;
       sun += tlSunIn(texelFetch(tlS, t, 0), y + 0.2 - dot(q - cc, TL_SD) * TL_TANE);
     }
-    gl_FragColor = vec4(sun / 16.0, townSky(vec3(P.x, y, P.y), vec3(0.0, 1.0, 0.0)), 0.0, 1.0);
+    gl_FragColor = vec4(sun / 16.0, townSky(vec3(P.x, y, P.y), vec3(0.0, 1.0, 0.0), vec2(0.0)), 0.0, 1.0);
   }`;
 const QUAD_V = "void main() { gl_Position = vec4(position.xy, 0.0, 1.0); }";
 const HAT = `
@@ -171,6 +175,7 @@ const SKY_F = `${HAT}
     gl_FragColor = mode == 0 ? wS / wW : vec4(upS / ${f(DIRS)}, 0.0, 0.0, 1.0);
   }`;
 
+export const SHADERS = { CHUNK, SHADOW_F, SKY_F, GROUND_F };     // (for tools/glslcheck.mjs)
 const LIT = "0.62 + 0.55 * max(dot(N, sun), 0.0) + 0.08 * N.y";
 const OUT = /gl_FragColor = vec4\(mix\(col, fogC/;
 const withChunk = (src, extra = "") => { const i = src.indexOf("void main()"); return src.slice(0, i) + extra + CHUNK + "\n" + src.slice(i); };

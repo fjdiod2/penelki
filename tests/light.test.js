@@ -96,3 +96,18 @@ test("holes: the floor of a hole sees the sky out of its open ends, and its laye
   assert.ok(s.up < 0.65, `a ceiling over it ${s.up.toFixed(2)}`);
   const k = (j) => j; const [i, j] = cellOf(g, 0, 0), q = j * g.nx + i; assert.equal(baseOf(g.bot[q], g.top[q], g.g0[q], g.g1[q]), 20);
 });
+
+// the shaders get the light put in (sandbox_lightgl.js): building pieces look their small faces' sky up by their wall
+import * as THREE from "three";
+const { createTownLight } = await import("../sandbox_lightgl.js");
+test("patching: building pieces get their wall's direction for the sky; props their own faces'; the ground its baked light", () => {
+  const L = createTownLight({ getRenderTarget: () => null }), LIT = "0.62 + 0.55 * max(dot(N, sun), 0.0) + 0.08 * N.y";
+  const v = "varying vec3 vM; void main() { vec4 m = instanceMatrix * vec4(position, 1.0); vM = m.xyz; gl_Position = vec4(0.0); }";
+  const f = `uniform vec3 sun; varying vec3 vM; void main() { vec3 col = vec3(1.0), N = vec3(0.0, 1.0, 0.0); col *= ${LIT}; gl_FragColor = vec4(mix(col, fogC, 0.0), 1.0); }`;
+  const wall = new THREE.ShaderMaterial({ uniforms: { tWalls: { value: null } }, vertexShader: v, fragmentShader: f }), prop = new THREE.ShaderMaterial({ uniforms: {}, vertexShader: v, fragmentShader: f });
+  L.patch(wall); L.patch(prop);
+  assert.ok(wall.vertexShader.includes("instanceMatrix[1].xyz") && wall.fragmentShader.includes("townLitWall(vTW, N, vTN, sun)"));
+  assert.ok(prop.vertexShader.includes("vTN = vec3(0.0);") && !prop.vertexShader.includes("instanceMatrix[1]"));
+  const ground = new THREE.ShaderMaterial({ uniforms: {}, vertexShader: "void main() {}", fragmentShader: "varying vec3 vW; void main() { vec3 col = vec3(1.0); gl_FragColor = vec4(mix(col, fogC, 0.0), 1.0); }" });
+  L.patch(ground); assert.ok(ground.fragmentShader.includes("townFactorGround(vW)"));
+});

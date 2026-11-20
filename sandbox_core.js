@@ -1005,6 +1005,7 @@ async function start() {
   let last = performance.now(), hazeTick = 0;
   window.__sandbox = { light: townLight, lightGrid: () => lightGrid, S: () => S, D: () => draft, A: () => action && action.kind, pickAt: (x, y) => { mouse.x = x; mouse.y = y; const a = pick(); return a && { p: a.p, y: a.y, block: a.block && a.block.id, roof: a.roof }; }, rebuild, kit, camera, controls, topOf, scene, streetRoot, ground, renderer, draw: () => clouds.render(scene, camera), clouds, allRoads: () => allRoads, yardRegions: () => yardRegions.map((r) => ({ id: r.y.id, area: r.Y.area })), entrances: () => cityLays.flatMap(({ lay }) => lay.out.filter((p) => p.pc === "entrance").map((p) => ({ q: p.q, n: p.n }))) };
   renderer.setAnimationLoop((t) => {
+    if (t - last < 1000 / 60 - 2) return;          // at most 60 frames a second (a 120 Hz screen: every other one): cooler laptops
     const dt = Math.min(0.05, (t - last) / 1000); last = t;
     emit("frame", dt); if (!freeCam) controls.update();
     if (action && action.kind === "trees" && mouse.in && t - action.last > 70) { action.last = t; const at = pick(); if (at && plantAt(at)) { action.changed = true; trees.rebuild(S.trees, treeY); updateStats(); } showHover(); }

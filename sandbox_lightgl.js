@@ -6,62 +6,101 @@
 //   tlS  sun shadows: [L1, H1, L2, H2] per cell, the heights shaded there
 //   tlW  sky on walls facing +x, -x, +z, -z; tlU  sky on a roof. Both at half the map's resolution, the LAYERS stacked
 //        one above the other in the image (layer k: rows k * sz ..)
+//   tlGr the light on the ground, worked out once from those (sun softened over 16 spots, sky): the ground and the roads,
+//        most of the screen from above, read it once a pixel instead of looking the shadows up 8 times. (The ground is
+//        flat: for hills, the bake would take the ground's height at each spot instead of 0)
 import * as THREE from "three";
 import { SUN, SUN_XZ, TAN_E, LAYERS, DIRS, SKY_STEPS, SKY_GROW } from "./sandbox_light.js";
 
 const f = (x) => (Number.isInteger(x) ? x.toFixed(1) : String(x));
+const DISK = Array.from({ length: 8 }, (_, k) => { const r = Math.sqrt((k + 0.5) / 8), a = k * 2.3999632; return `vec2(${(r * Math.cos(a)).toFixed(4)}, ${(r * Math.sin(a)).toFixed(4)})`; }).join(", ");
 const CONSTS = `
   const vec3 TL_SUN = vec3(${SUN.map(f).join(", ")}); const vec2 TL_SD = vec2(${SUN_XZ.map(f).join(", ")}); const float TL_TANE = ${f(TAN_E)};
   const float TL_LAY[8] = float[8](${LAYERS.map(f).join(", ")});`;
 
 // what the materials get: the sun and the sky at a point facing N (x: sky 0 .. 1, y: sun 0 .. 1), as sunAt and skyMix
 const CHUNK = `
-  uniform sampler2D tlH; uniform sampler2D tlS; uniform sampler2D tlW; uniform sampler2D tlU;
+  uniform sampler2D tlH; uniform sampler2D tlS; uniform sampler2D tlW; uniform sampler2D tlU; uniform sampler2D tlGr;
   uniform vec4 tlG; uniform vec4 tlN;          // x0, z0, cell, on · nx, nz, sky nx, sky nz
+  uniform float tlDbg;                         // a debug view (?light=sky / sun): 1 the sky amount, 2 the sun, in grey (blue: sun not looked up)
+  vec3 TL_dbg = vec3(1.0);
   ${CONSTS}
   float tlLayer(float h) { if (h <= 0.0) return 0.0; for (int k = 1; k < 8; k++) if (h < TL_LAY[k]) return float(k - 1) + (h - TL_LAY[k - 1]) / (TL_LAY[k] - TL_LAY[k - 1]); return 7.0; }
   float tlShade(vec2 LH, float y) { return (1.0 - smoothstep(LH.y - 0.4, LH.y + 0.4, y)) * smoothstep(LH.x - 0.4, LH.x + 0.4, y); }
   float tlSunIn(vec4 S, float y) { return 1.0 - max(tlShade(S.xy, y), S.w > -999.0 ? tlShade(S.zw, y) : 0.0); }
-  vec2 townVis(vec3 W, vec3 N) {
-    if (tlG.w < 0.5) return vec2(1.0);
-    // the sun: the shadow map at 12 spots in a disc 1.5 cells across round the point (turned per pixel), each corrected for
-    // where in its cell it is (nearer the sun, the shadows reach higher): soft edges instead of the cells' steps
-    float c = tlG.z; vec2 nh = N.xz, o = nh * 1.5 * c, P = W.xz + o; float ys = W.y + dot(o, TL_SD) * TL_TANE + 0.2, sun = 0.0;
-    float rot = 6.2831853 * fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
-    for (int k = 0; k < 12; k++) {
-      float r = sqrt((float(k) + 0.5) / 12.0) * 0.75 * c, a = float(k) * 2.3999632 + rot;
-      vec2 q = P + r * vec2(cos(a), sin(a)); ivec2 t = ivec2(floor((q - tlG.xy) / c));
+  // the sun: the shadow map at 8 spots in a disc 1.5 cells across round the point (turned per pixel), each corrected for
+  // where in its cell it is (nearer the sun, the shadows reach higher): soft edges instead of the cells' steps
+  const vec2 TL_DISK[8] = vec2[8](${DISK});
+  float townSun(vec3 W, vec3 N) {
+    float c = tlG.z; vec2 o = N.xz * 1.5 * c, P = W.xz + o; float ys = W.y + dot(o, TL_SD) * TL_TANE + 0.2, sun = 0.0;
+    float rot = 6.2831853 * fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715)))), cr = cos(rot), sr = sin(rot);
+    mat2 R = mat2(cr, sr, -sr, cr) * (0.75 * c);
+    for (int k = 0; k < 8; k++) {
+      vec2 q = P + R * TL_DISK[k]; ivec2 t = ivec2(floor((q - tlG.xy) / c));
       if (t.x < 0 || t.y < 0 || t.x >= int(tlN.x) || t.y >= int(tlN.y)) { sun += 1.0; continue; }
       vec2 cc = tlG.xy + (vec2(t) + 0.5) * c;
       sun += tlSunIn(texelFetch(tlS, t, 0), ys - dot(q - cc, TL_SD) * TL_TANE);
     }
-    sun /= 12.0;
-    float sc = 2.0 * c, sky = 1.0; vec2 po = W.xz + nh * 1.5 * sc, uv = (po - tlG.xy) / (tlN.zw * sc);
-    if (uv.x > 0.0 && uv.y > 0.0 && uv.x < 1.0 && uv.y < 1.0) {
-      ivec2 hq = ivec2(floor((po - tlG.xy) / c)); vec4 bt = hq.x < int(tlN.x) && hq.y < int(tlN.y) ? texelFetch(tlH, hq, 0) : vec4(0.0);
-      float lp = tlLayer(W.y - (bt.w > bt.z ? bt.z : bt.x > 0.5 ? 0.0 : bt.y)), k0 = floor(lp), fk = lp - k0, k1 = min(k0 + 1.0, 7.0);
-      vec2 cu = clamp(uv, 0.5 / tlN.zw, 1.0 - 0.5 / tlN.zw), u0 = vec2(cu.x, (k0 + cu.y) / 8.0), u1 = vec2(cu.x, (k1 + cu.y) / 8.0);
-      vec4 wv = mix(texture(tlW, u0), texture(tlW, u1), fk); float up = mix(texture(tlU, u0).x, texture(tlU, u1).x, fk);
-      vec4 wg = vec4(max(N.x, 0.0), max(-N.x, 0.0), max(N.z, 0.0), max(-N.z, 0.0)); float ws = dot(wg, vec4(1.0));
-      float wall = ws > 1e-3 ? dot(wv, wg) / ws : up, a = max(N.y, 0.0), b = length(nh), dn = max(-N.y, 0.0);
-      sky = (a * up + b * wall + dn * 0.6 * wall) / max(a + b + dn, 1e-6);
-    }
-    return vec2(sky, sun);
+    return sun / 8.0;
+  }
+  float townSky(vec3 W, vec3 N) {
+    float c = tlG.z, sc = 2.0 * c; vec2 nh = N.xz, po = W.xz + nh * 1.5 * sc, uv = (po - tlG.xy) / (tlN.zw * sc);
+    if (uv.x <= 0.0 || uv.y <= 0.0 || uv.x >= 1.0 || uv.y >= 1.0) return 1.0;
+    ivec2 hq = ivec2(floor((po - tlG.xy) / c)); vec4 bt = hq.x < int(tlN.x) && hq.y < int(tlN.y) ? texelFetch(tlH, hq, 0) : vec4(0.0);
+    float lp = tlLayer(W.y - (bt.w > bt.z ? bt.z : bt.x > 0.5 ? 0.0 : bt.y)), k0 = floor(lp), fk = lp - k0, k1 = min(k0 + 1.0, 7.0);
+    vec2 cu = clamp(uv, 0.5 / tlN.zw, 1.0 - 0.5 / tlN.zw), u0 = vec2(cu.x, (k0 + cu.y) / 8.0), u1 = vec2(cu.x, (k1 + cu.y) / 8.0);
+    float a = max(N.y, 0.0), b = length(nh), dn = max(-N.y, 0.0), up = 0.0, wall = 0.0;
+    if (a + dn > 0.01 || b < 0.01) up = mix(texture(tlU, u0).x, texture(tlU, u1).x, fk);
+    if (b > 0.01) {
+      vec4 wv = mix(texture(tlW, u0), texture(tlW, u1), fk), wg = vec4(max(N.x, 0.0), max(-N.x, 0.0), max(N.z, 0.0), max(-N.z, 0.0));
+      wall = dot(wv, wg) / max(dot(wg, vec4(1.0)), 1e-3);
+    } else wall = up;
+    return (a * up + b * wall + dn * 0.6 * wall) / max(a + b + dn, 1e-6);
   }
   // the light as before (0.62 sky, 0.55 sun, 0.08 from above: the same in the open), the sky part scaled by how much
-  // sky there is, the sun by the shadows, and a little light thrown back off the walls into closed-in places. Shade is
-  // a little bluer (TL_tint, multiply the colour by it too)
+  // sky there is, the sun by the shadows (looked up only on faces turned to the sun), and a little light thrown back off
+  // the walls into closed-in places. Shade is a little bluer (TL_tint, multiply the colour by it too)
+  // Ns: the direction the sky and the shadows are looked up for. A facade's small sideways faces (window sides, frames,
+  // balcony sides) take their wall's (townLitWall), as they sit in it and see its strip of sky; the sun still falls on
+  // each face by its own direction N
   vec3 TL_tint = vec3(1.0);
-  float townLit(vec3 W, vec3 N, vec3 sunD) {
-    vec2 v = townVis(W, N); float sd = max(dot(N, sunD), 0.0);
-    float sk = (0.62 + 0.08 * N.y) * v.x, sn = 0.55 * sd * v.y, bo = 0.1 * (1.0 - v.x);
+  float townLitN(vec3 W, vec3 N, vec3 Ns, vec3 sunD) {
+    float sd = max(dot(N, sunD), 0.0), sky = 1.0, sun = 1.0;
+    if (tlG.w > 0.5) { sky = townSky(W, Ns); if (sd > 0.0) sun = townSun(W, Ns); }
+    float sk = (0.62 + 0.08 * N.y) * sky, sn = 0.55 * sd * sun, bo = 0.1 * (1.0 - sky);
+    TL_dbg = tlDbg < 1.5 ? vec3(sky) : sd > 0.0 ? vec3(sun) : vec3(0.15, 0.2, 0.45);
     TL_tint = mix(vec3(0.9, 0.96, 1.1), vec3(1.0), clamp(sn / 0.25, 0.0, 1.0));
     return sk + sn + bo;
   }
+  float townLit(vec3 W, vec3 N, vec3 sunD) { return townLitN(W, N, N, sunD); }
+  float townLitWall(vec3 W, vec3 N, vec3 Nw, vec3 sunD) { return townLitN(W, N, abs(N.y) > 0.7 || dot(Nw, Nw) < 0.5 ? N : Nw, sunD); }
   float townFactor(vec3 W) { return townLit(W, vec3(0.0, 1.0, 0.0), TL_SUN) / (0.7 + 0.55 * TL_SUN.y); }   // (1 in the open sun)
+  // the ground and roads: from the baked ground light, one read
+  float townFactorGround(vec3 W) {
+    vec2 uv = (W.xz - tlG.xy) / (tlN.xy * tlG.z), v = vec2(1.0);
+    if (tlG.w > 0.5 && uv.x > 0.0 && uv.y > 0.0 && uv.x < 1.0 && uv.y < 1.0) v = texture(tlGr, uv).xy;
+    TL_dbg = vec3(tlDbg < 1.5 ? v.y : v.x);
+    float sk = 0.7 * v.y, sn = 0.55 * TL_SUN.y * v.x, bo = 0.1 * (1.0 - v.y);
+    TL_tint = mix(vec3(0.9, 0.96, 1.1), vec3(1.0), clamp(sn / 0.25, 0.0, 1.0));
+    return (sk + sn + bo) / (0.7 + 0.55 * TL_SUN.y);
+  }
   float townFactorDown(vec3 W) { return townLit(W, vec3(0.0, -1.0, 0.0), TL_SUN) / (0.54 * 0.6); }          // an underside (1 in the open)
 `;
 
+// the ground light, per map cell: x the sun at the ground (16 spots in a disc, as townSun), y the sky on it
+const DISK16 = Array.from({ length: 16 }, (_, k) => { const r = Math.sqrt((k + 0.5) / 16), a = k * 2.3999632; return `vec2(${(r * Math.cos(a)).toFixed(4)}, ${(r * Math.sin(a)).toFixed(4)})`; }).join(", ");
+const GROUND_F = `${CHUNK}
+  const vec2 TL_D16[16] = vec2[16](${DISK16});
+  void main() {
+    float c = tlG.z; vec2 P = tlG.xy + (floor(gl_FragCoord.xy) + 0.5) * c; float sun = 0.0, y = 0.0;   // (y: the ground's height here)
+    for (int k = 0; k < 16; k++) {
+      vec2 q = P + TL_D16[k] * 0.75 * c; ivec2 t = ivec2(floor((q - tlG.xy) / c));
+      if (t.x < 0 || t.y < 0 || t.x >= int(tlN.x) || t.y >= int(tlN.y)) { sun += 1.0; continue; }
+      vec2 cc = tlG.xy + (vec2(t) + 0.5) * c;
+      sun += tlSunIn(texelFetch(tlS, t, 0), y + 0.2 - dot(q - cc, TL_SD) * TL_TANE);
+    }
+    gl_FragColor = vec4(sun / 16.0, townSky(vec3(P.x, y, P.y), vec3(0.0, 1.0, 0.0)), 0.0, 1.0);
+  }`;
 const QUAD_V = "void main() { gl_Position = vec4(position.xy, 0.0, 1.0); }";
 const HAT = `
   uniform sampler2D tlH; uniform vec4 tlG; uniform vec4 tlN;
@@ -137,13 +176,14 @@ const OUT = /gl_FragColor = vec4\(mix\(col, fogC/;
 const withChunk = (src, extra = "") => { const i = src.indexOf("void main()"); return src.slice(0, i) + extra + CHUNK + "\n" + src.slice(i); };
 
 export function createTownLight(renderer) {
-  const U = { tlH: { value: null }, tlS: { value: null }, tlW: { value: null }, tlU: { value: null }, tlG: { value: new THREE.Vector4() }, tlN: { value: new THREE.Vector4() } };
+  const U = { tlH: { value: null }, tlS: { value: null }, tlW: { value: null }, tlU: { value: null }, tlGr: { value: null }, tlDbg: { value: { sky: 1, sun: 2 }[typeof location === "undefined" ? "" : new URLSearchParams(location.search).get("light")] || 0 }, tlG: { value: new THREE.Vector4() }, tlN: { value: new THREE.Vector4() } };
   const post = new THREE.Scene(), cam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1), quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2));
   quad.frustumCulled = false; post.add(quad);
   const bakeU = { tlH: U.tlH, tlG: U.tlG, tlN: U.tlN };
   const shadowMat = new THREE.ShaderMaterial({ uniforms: { ...bakeU, maxD: { value: 0 } }, vertexShader: QUAD_V, fragmentShader: SHADOW_F, depthTest: false, depthWrite: false });
   const skyMat = new THREE.ShaderMaterial({ uniforms: { ...bakeU, mode: { value: 0 } }, vertexShader: QUAD_V, fragmentShader: SKY_F, depthTest: false, depthWrite: false });
-  let hTex = null, sRT = null, wRT = null, uRT = null;
+  const groundMat = new THREE.ShaderMaterial({ uniforms: U, vertexShader: QUAD_V, fragmentShader: GROUND_F, depthTest: false, depthWrite: false });
+  let hTex = null, sRT = null, wRT = null, uRT = null, gRT = null;
   const rt = (w, h, filter) => new THREE.WebGLRenderTarget(w, h, { type: THREE.HalfFloatType, format: THREE.RGBAFormat, minFilter: filter, magFilter: filter, depthBuffer: false, generateMipmaps: false });
   function draw(mat, target) { quad.material = mat; renderer.setRenderTarget(target); renderer.render(post, cam); }
 
@@ -152,10 +192,10 @@ export function createTownLight(renderer) {
     if (!g) { U.tlG.value.w = 0; return; }
     const sx = Math.ceil(g.nx / 2), sz = Math.ceil(g.nz / 2);
     if (!hTex || hTex.image.width !== g.nx || hTex.image.height !== g.nz) {
-      if (hTex) { hTex.dispose(); sRT.dispose(); wRT.dispose(); uRT.dispose(); }
+      if (hTex) { hTex.dispose(); sRT.dispose(); wRT.dispose(); uRT.dispose(); gRT.dispose(); }
       hTex = new THREE.DataTexture(new Float32Array(g.nx * g.nz * 4), g.nx, g.nz, THREE.RGBAFormat, THREE.FloatType);
       hTex.minFilter = hTex.magFilter = THREE.NearestFilter; hTex.generateMipmaps = false;
-      sRT = rt(g.nx, g.nz, THREE.NearestFilter); wRT = rt(sx, sz * 8, THREE.LinearFilter); uRT = rt(sx, sz * 8, THREE.LinearFilter);
+      sRT = rt(g.nx, g.nz, THREE.NearestFilter); wRT = rt(sx, sz * 8, THREE.LinearFilter); uRT = rt(sx, sz * 8, THREE.LinearFilter); gRT = rt(g.nx, g.nz, THREE.LinearFilter);
     }
     const d = hTex.image.data; for (let k = 0; k < g.nx * g.nz; k++) { d[4 * k] = g.bot[k]; d[4 * k + 1] = g.top[k]; d[4 * k + 2] = g.g0[k]; d[4 * k + 3] = g.g1[k]; }
     hTex.needsUpdate = true;
@@ -164,8 +204,9 @@ export function createTownLight(renderer) {
     shadowMat.uniforms.maxD.value = g.maxTop / TAN_E + g.c; draw(shadowMat, sRT);
     skyMat.uniforms.mode.value = 0; draw(skyMat, wRT);
     skyMat.uniforms.mode.value = 1; draw(skyMat, uRT);
-    renderer.setRenderTarget(prev);
     U.tlS.value = sRT.texture; U.tlW.value = wRT.texture; U.tlU.value = uRT.texture; U.tlG.value.w = 1;
+    U.tlGr.value = null; draw(groundMat, gRT); U.tlGr.value = gRT.texture;            // (from the textures just made)
+    renderer.setRenderTarget(prev);
   }
 
   // put the light into a material, once: the shaders that light by LIT (buildings, props), the ones that do not light
@@ -176,21 +217,25 @@ export function createTownLight(renderer) {
     if (m.isShaderMaterial && m.uniforms && !m.uniforms.tDiffuse) {
       let v = m.vertexShader, fr = m.fragmentShader;
       if (fr.includes(LIT) && v.includes("vM = m.xyz;") && OUT.test(fr)) {
-        v = "varying vec3 vTW;\n" + v.replace("vM = m.xyz;", "vM = m.xyz; vTW = (modelMatrix * m).xyz;");
-        fr = withChunk(fr, "varying vec3 vTW;\n").replace(LIT, "townLit(vTW, N, sun)").replace(OUT, "col *= TL_tint; $&");
+        // the building pieces (apartments.js: tWalls) are placed with their y axis into the building: the wall's outward
+        // direction, for their small faces' sky (townLitWall). Props have no wall
+        const wall = !!m.uniforms.tWalls;
+        v = "varying vec3 vTW; varying vec3 vTN;\n" + v.replace("vM = m.xyz;", "vM = m.xyz; vTW = (modelMatrix * m).xyz;" +
+          (wall ? " { vec3 y = (modelMatrix * vec4(instanceMatrix[1].xyz, 0.0)).xyz; y.y = 0.0; vTN = dot(y, y) > 1e-6 ? -normalize(y) : vec3(0.0); }" : " vTN = vec3(0.0);"));
+        fr = withChunk(fr, "varying vec3 vTW; varying vec3 vTN;\n").replace(LIT, "townLitWall(vTW, N, vTN, sun)").replace(OUT, "col *= TL_tint; if (tlDbg > 0.5) col = TL_dbg; $&");
       } else if (/varying vec3 vW;/.test(fr) && OUT.test(fr) && !fr.includes("townFactor")) {
-        fr = withChunk(fr).replace(OUT, "{ float tlf = townFactor(vW); col *= tlf * TL_tint; } $&");
+        fr = withChunk(fr).replace(OUT, "{ float tlf = townFactorGround(vW); col *= tlf * TL_tint; if (tlDbg > 0.5) col = TL_dbg; } $&");
       } else return;
       m.vertexShader = v; m.fragmentShader = fr; Object.assign(m.uniforms, U); m.needsUpdate = true;
     } else if (m.isMeshBasicMaterial && m.userData.townLight) {
       m.onBeforeCompile = (sh) => {
         Object.assign(sh.uniforms, U);
         sh.vertexShader = "varying vec3 vTW;\n" + sh.vertexShader.replace("#include <project_vertex>", "#include <project_vertex>\n  vec4 tlw = vec4(transformed, 1.0);\n#ifdef USE_INSTANCING\n  tlw = instanceMatrix * tlw;\n#endif\n  vTW = (modelMatrix * tlw).xyz;");
-        sh.fragmentShader = withChunk(sh.fragmentShader, "varying vec3 vTW;\n").replace("#include <opaque_fragment>", `#include <opaque_fragment>\n  { float tlf = ${m.userData.townLight === "down" ? "townFactorDown" : "townFactor"}(vTW); gl_FragColor.rgb *= tlf * TL_tint; }`);
+        sh.fragmentShader = withChunk(sh.fragmentShader, "varying vec3 vTW;\n").replace("#include <opaque_fragment>", `#include <opaque_fragment>\n  { float tlf = ${m.userData.townLight === "down" ? "townFactorDown" : "townFactor"}(vTW); gl_FragColor.rgb *= tlf * TL_tint; if (tlDbg > 0.5) gl_FragColor.rgb = TL_dbg; }`);
       };
       m.customProgramCacheKey = () => "townLight-" + m.userData.townLight; m.needsUpdate = true;
     }
   }
   function patchAll(root) { root.traverse((o) => { if (!o.material) return; for (const m of Array.isArray(o.material) ? o.material : [o.material]) patch(m); }); }
-  return { update, patch, patchAll, uniforms: U, targets: () => ({ hTex, sRT, wRT, uRT }) };
+  return { update, patch, patchAll, uniforms: U, targets: () => ({ hTex, sRT, wRT, uRT, gRT }) };
 }

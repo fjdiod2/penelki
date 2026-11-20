@@ -62,7 +62,11 @@ const CHUNK = `${AER}
       vec4 wv = mix(texture(tlW, u0), texture(tlW, u1), fk), wg = vec4(max(N.x, 0.0), max(-N.x, 0.0), max(N.z, 0.0), max(-N.z, 0.0));
       wall = dot(wv, wg) / max(dot(wg, vec4(1.0)), 1e-3);
     } else wall = up;
-    return (a * up + b * wall + dn * 0.6 * wall) / max(a + b + dn, 1e-6);
+    // a face looking down gets the light thrown up off the ground below it (the baked ground light: its sky and sun),
+    // 0.6 of the sky's in the open as before; so the underside of a bridge over a shaded street is dark
+    float down = 0.0;
+    if (dn > 0.01) { vec2 gu = (W.xz - tlG.xy) / (tlN.xy * c), gv = gu.x > 0.0 && gu.y > 0.0 && gu.x < 1.0 && gu.y < 1.0 ? texture(tlGr, gu).xy : vec2(1.0); down = 0.6 * (0.6 * gv.y + 0.4 * gv.x); }
+    return (a * up + b * wall + dn * down) / max(a + b + dn, 1e-6);
   }
   // the light as before (0.62 sky, 0.55 sun, 0.08 from above: the same in the open), the sky part scaled by how much
   // sky there is, the sun by the shadows (looked up only on faces turned to the sun), and a little light thrown back off

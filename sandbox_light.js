@@ -166,12 +166,13 @@ export function layerPos(h) {
   for (let k = 1; k < LAYERS.length; k++) if (h < LAYERS[k]) return k - 1 + (h - LAYERS[k - 1]) / (LAYERS[k] - LAYERS[k - 1]);
   return LAYERS.length - 1;
 }
-// the light of the sky on a surface facing n at a point, from the four wall directions and up (as the shaders mix them)
-export function skyMix(s, n) {
+// the light of the sky on a surface facing n at a point, from the four wall directions and up (as the shaders mix them);
+// a face looking down gets the light off the ground below, ground = [sun, sky] on it (in the open [1, 1]: 0.6)
+export function skyMix(s, n, ground = [1, 1]) {
   const w = [Math.max(n[0], 0), Math.max(-n[0], 0), Math.max(n[2], 0), Math.max(-n[2], 0)], ws = w[0] + w[1] + w[2] + w[3];
   const wall = ws > 1e-3 ? (w[0] * s.walls[0] + w[1] * s.walls[1] + w[2] * s.walls[2] + w[3] * s.walls[3]) / ws : s.up;
   const a = Math.max(n[1], 0), b = Math.hypot(n[0], n[2]), d = Math.max(-n[1], 0);
-  return (a * s.up + b * wall + d * 0.6 * wall) / Math.max(a + b + d, 1e-6);
+  return (a * s.up + b * wall + d * 0.6 * (0.6 * ground[1] + 0.4 * ground[0])) / Math.max(a + b + d, 1e-6);
 }
 
 // aerial perspective: the haze per colour channel, blue faster than red (air scatters blue the most), so things in the

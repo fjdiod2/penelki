@@ -69,6 +69,8 @@ test("mixing: a wall uses its direction's sky, a roof up, a slanted face in betw
   const s = { up: 0.2, walls: [0.9, 0.1, 0.5, 0.3] };
   assert.equal(skyMix(s, [0, 1, 0]), 0.2); assert.equal(skyMix(s, [1, 0, 0]), 0.9); assert.equal(skyMix(s, [0, 0, -1]), 0.3);
   assert.ok(Math.abs(skyMix(s, [Math.SQRT1_2, 0, Math.SQRT1_2]) - 0.7) < 1e-9);
+  assert.equal(skyMix(s, [0, -1, 0]), 0.6, "an underside over open ground: as before");
+  assert.ok(Math.abs(skyMix(s, [0, -1, 0], [0, 0.1]) - 0.036) < 1e-9, "over a shaded street: dark");
   assert.equal(layerPos(0), 0); assert.equal(layerPos(5), 1); assert.equal(layerPos(37.5), 3.5); assert.equal(layerPos(1e4), 7);
 });
 

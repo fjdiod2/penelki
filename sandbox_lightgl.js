@@ -11,7 +11,7 @@
 //        flat: for hills, the bake would take the ground's height at each spot instead of 0)
 import * as THREE from "three";
 import { SUN, SUN_XZ, TAN_E, LAYERS, DIRS, SKY_STEPS, SKY_GROW, AERIAL } from "./sandbox_light.js";
-import { facadePatch } from "./sandbox_facade.js";
+import { facadePatch, FACADE } from "./sandbox_facade.js";
 
 const f = (x) => (Number.isInteger(x) ? x.toFixed(1) : String(x));
 const DISK = Array.from({ length: 8 }, (_, k) => { const r = Math.sqrt((k + 0.5) / 8), a = k * 2.3999632; return `vec2(${(r * Math.cos(a)).toFixed(4)}, ${(r * Math.sin(a)).toFixed(4)})`; }).join(", ");
@@ -196,7 +196,7 @@ const FOG_BASIC = `#ifdef USE_FOG
 const withChunk = (src, extra = "", chunk = CHUNK) => { const i = src.indexOf("void main()"); return src.slice(0, i) + extra + chunk + "\n" + src.slice(i); };
 
 export function createTownLight(renderer) {
-  const U = { tlH: { value: null }, tlS: { value: null }, tlW: { value: null }, tlU: { value: null }, tlGr: { value: null }, tlAer: { value: new THREE.Vector4(...AERIAL, 1) }, tlDbg: { value: { sky: 1, sun: 2 }[typeof location === "undefined" ? "" : new URLSearchParams(location.search).get("light")] || 0 }, tlG: { value: new THREE.Vector4() }, tlN: { value: new THREE.Vector4() } };
+  const U = { tlH: { value: null }, tlS: { value: null }, tlW: { value: null }, tlU: { value: null }, tlGr: { value: null }, tlAer: { value: new THREE.Vector4(...AERIAL, 1) }, faA: { value: new THREE.Vector4(...FACADE.faA) }, faB: { value: new THREE.Vector4(...FACADE.faB) }, faC: { value: new THREE.Vector4(...FACADE.faC) }, tlDbg: { value: { sky: 1, sun: 2 }[typeof location === "undefined" ? "" : new URLSearchParams(location.search).get("light")] || 0 }, tlG: { value: new THREE.Vector4() }, tlN: { value: new THREE.Vector4() } };
   const post = new THREE.Scene(), cam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1), quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2));
   quad.frustumCulled = false; post.add(quad);
   const bakeU = { tlH: U.tlH, tlG: U.tlG, tlN: U.tlN };

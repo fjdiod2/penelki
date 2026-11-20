@@ -99,6 +99,7 @@ test("holes: the floor of a hole sees the sky out of its open ends, and its laye
 
 // the shaders get the light put in (sandbox_lightgl.js): building pieces look their small faces' sky up by their wall
 import * as THREE from "three";
+const LIGHT = await import("../sandbox_light.js");
 const { createTownLight } = await import("../sandbox_lightgl.js");
 test("patching: building pieces get their wall's direction for the sky; props their own faces'; the ground its baked light", () => {
   const L = createTownLight({ getRenderTarget: () => null }), LIT = "0.62 + 0.55 * max(dot(N, sun), 0.0) + 0.08 * N.y";
@@ -110,4 +111,16 @@ test("patching: building pieces get their wall's direction for the sky; props th
   assert.ok(prop.vertexShader.includes("vTN = vec3(0.0);") && !prop.vertexShader.includes("instanceMatrix[1]"));
   const ground = new THREE.ShaderMaterial({ uniforms: {}, vertexShader: "void main() {}", fragmentShader: "varying vec3 vW; void main() { vec3 col = vec3(1.0); gl_FragColor = vec4(mix(col, fogC, 0.0), 1.0); }" });
   L.patch(ground); assert.ok(ground.fragmentShader.includes("townFactorGround(vW)"));
+});
+
+test("aerial perspective: none close by, all of it far off, and in between blue goes first and red last", () => {
+  const { aerial } = LIGHT;
+  assert.deepEqual(aerial(0), [0, 0, 0]); assert.deepEqual(aerial(1), [1, 1, 1]);
+  const [r, g, b] = aerial(0.4); assert.ok(b > g && g > r && r > 0.25 && b < 0.6, `${r} ${g} ${b}`);
+  const wall = 0.2, fog = 0.6, tint = aerial(0.4).map((k) => wall + (fog - wall) * k); assert.ok(tint[2] - tint[0] > 0.04, "a dark wall turns bluish");
+});
+test("patching: the haze in the patched shaders and the water becomes the aerial perspective", () => {
+  const L = createTownLight({ getRenderTarget: () => null });
+  const water = new THREE.ShaderMaterial({ uniforms: { tDiffuse: { value: null } }, vertexShader: "void main() {}", fragmentShader: "varying vec3 vW; void main() { vec3 col = vec3(1.0); gl_FragColor = vec4(mix(col, fogC, smoothstep(fogR.x, fogR.y, length(cameraPosition - vW))), 1.0); }" });
+  L.patch(water); assert.ok(water.fragmentShader.includes("townAerial(col, fogC, smoothstep(fogR.x, fogR.y, length(cameraPosition - vW)))") && !water.fragmentShader.includes("townVis"));
 });

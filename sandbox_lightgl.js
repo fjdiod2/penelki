@@ -10,7 +10,7 @@
 //        most of the screen from above, read it once a pixel instead of looking the shadows up 8 times. (The ground is
 //        flat: for hills, the bake would take the ground's height at each spot instead of 0)
 import * as THREE from "three";
-import { SUN, SUN_XZ, TAN_E, LAYERS, DIRS, SKY_STEPS, SKY_GROW } from "./sandbox_light.js";
+import { SUN, SUN_XZ, TAN_E, LAYERS, DIRS, SKY_STEPS, SKY_GROW, AERIAL } from "./sandbox_light.js";
 
 const f = (x) => (Number.isInteger(x) ? x.toFixed(1) : String(x));
 const DISK = Array.from({ length: 8 }, (_, k) => { const r = Math.sqrt((k + 0.5) / 8), a = k * 2.3999632; return `vec2(${(r * Math.cos(a)).toFixed(4)}, ${(r * Math.sin(a)).toFixed(4)})`; }).join(", ");
@@ -18,8 +18,11 @@ const CONSTS = `
   const vec3 TL_SUN = vec3(${SUN.map(f).join(", ")}); const vec2 TL_SD = vec2(${SUN_XZ.map(f).join(", ")}); const float TL_TANE = ${f(TAN_E)};
   const float TL_LAY[8] = float[8](${LAYERS.map(f).join(", ")});`;
 
+// aerial perspective (sandbox_light.js aerial): the haze per colour channel, blue first
+const AER = `
+  vec3 townAerial(vec3 col, vec3 fc, float f) { return mix(col, fc, 1.0 - pow(vec3(1.0 - clamp(f, 0.0, 1.0)), vec3(${AERIAL.map(f).join(", ")}))); }`;
 // what the materials get: the sun and the sky at a point facing N (x: sky 0 .. 1, y: sun 0 .. 1), as sunAt and skyMix
-const CHUNK = `
+const CHUNK = `${AER}
   uniform sampler2D tlH; uniform sampler2D tlS; uniform sampler2D tlW; uniform sampler2D tlU; uniform sampler2D tlGr;
   uniform vec4 tlG; uniform vec4 tlN;          // x0, z0, cell, on · nx, nz, sky nx, sky nz
   uniform float tlDbg;                         // a debug view (?light=sky / sun): 1 the sky amount, 2 the sun, in grey (blue: sun not looked up)
@@ -178,7 +181,16 @@ const SKY_F = `${HAT}
 export const SHADERS = { CHUNK, SHADOW_F, SKY_F, GROUND_F };     // (for tools/glslcheck.mjs)
 const LIT = "0.62 + 0.55 * max(dot(N, sun), 0.0) + 0.08 * N.y";
 const OUT = /gl_FragColor = vec4\(mix\(col, fogC/;
-const withChunk = (src, extra = "") => { const i = src.indexOf("void main()"); return src.slice(0, i) + extra + CHUNK + "\n" + src.slice(i); };
+const HAZE = /mix\(col, fogC, smoothstep\(fogR\.x, fogR\.y, /g;             // -> townAerial(col, fogC, smoothstep(...))
+const FOG_BASIC = `#ifdef USE_FOG
+  #ifdef FOG_EXP2
+    float fogFactor = 1.0 - exp(- fogDensity * fogDensity * vFogDepth * vFogDepth);
+  #else
+    float fogFactor = smoothstep(fogNear, fogFar, vFogDepth);
+  #endif
+  gl_FragColor.rgb = townAerial(gl_FragColor.rgb, fogColor, fogFactor);
+#endif`;
+const withChunk = (src, extra = "", chunk = CHUNK) => { const i = src.indexOf("void main()"); return src.slice(0, i) + extra + chunk + "\n" + src.slice(i); };
 
 export function createTownLight(renderer) {
   const U = { tlH: { value: null }, tlS: { value: null }, tlW: { value: null }, tlU: { value: null }, tlGr: { value: null }, tlDbg: { value: { sky: 1, sun: 2 }[typeof location === "undefined" ? "" : new URLSearchParams(location.search).get("light")] || 0 }, tlG: { value: new THREE.Vector4() }, tlN: { value: new THREE.Vector4() } };
@@ -219,6 +231,10 @@ export function createTownLight(renderer) {
   // basic materials marked userData.townLight (trees, reeds)
   function patch(m) {
     if (m.userData.tl) return; m.userData.tl = true;
+    if (m.isShaderMaterial && m.uniforms && m.uniforms.tDiffuse) {      // the water: only the aerial perspective (its picture is the lit town)
+      if (!HAZE.test(m.fragmentShader)) return; HAZE.lastIndex = 0;
+      m.fragmentShader = withChunk(m.fragmentShader, AER + "\n", "").replace(HAZE, "townAerial(col, fogC, smoothstep(fogR.x, fogR.y, "); m.needsUpdate = true; return;
+    }
     if (m.isShaderMaterial && m.uniforms && !m.uniforms.tDiffuse) {
       let v = m.vertexShader, fr = m.fragmentShader;
       if (fr.includes(LIT) && v.includes("vM = m.xyz;") && OUT.test(fr)) {
@@ -231,12 +247,13 @@ export function createTownLight(renderer) {
       } else if (/varying vec3 vW;/.test(fr) && OUT.test(fr) && !fr.includes("townFactor")) {
         fr = withChunk(fr).replace(OUT, "{ float tlf = townFactorGround(vW); col *= tlf * TL_tint; if (tlDbg > 0.5) col = TL_dbg; } $&");
       } else return;
+      fr = fr.replace(HAZE, "townAerial(col, fogC, smoothstep(fogR.x, fogR.y, ");
       m.vertexShader = v; m.fragmentShader = fr; Object.assign(m.uniforms, U); m.needsUpdate = true;
     } else if (m.isMeshBasicMaterial && m.userData.townLight) {
       m.onBeforeCompile = (sh) => {
         Object.assign(sh.uniforms, U);
         sh.vertexShader = "varying vec3 vTW;\n" + sh.vertexShader.replace("#include <project_vertex>", "#include <project_vertex>\n  vec4 tlw = vec4(transformed, 1.0);\n#ifdef USE_INSTANCING\n  tlw = instanceMatrix * tlw;\n#endif\n  vTW = (modelMatrix * tlw).xyz;");
-        sh.fragmentShader = withChunk(sh.fragmentShader, "varying vec3 vTW;\n").replace("#include <opaque_fragment>", `#include <opaque_fragment>\n  { float tlf = ${m.userData.townLight === "down" ? "townFactorDown" : "townFactor"}(vTW); gl_FragColor.rgb *= tlf * TL_tint; if (tlDbg > 0.5) gl_FragColor.rgb = TL_dbg; }`);
+        sh.fragmentShader = withChunk(sh.fragmentShader, "varying vec3 vTW;\n").replace("#include <opaque_fragment>", `#include <opaque_fragment>\n  { float tlf = ${m.userData.townLight === "down" ? "townFactorDown" : "townFactor"}(vTW); gl_FragColor.rgb *= tlf * TL_tint; if (tlDbg > 0.5) gl_FragColor.rgb = TL_dbg; }`).replace("#include <fog_fragment>", FOG_BASIC);
       };
       m.customProgramCacheKey = () => "townLight-" + m.userData.townLight; m.needsUpdate = true;
     }

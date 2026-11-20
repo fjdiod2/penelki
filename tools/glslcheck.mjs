@@ -17,8 +17,9 @@ const L = createTownLight({ getRenderTarget: () => null }), LIT = "0.62 + 0.55 *
 const piece = new THREE.ShaderMaterial({ uniforms: { tWalls: { value: null } }, vertexShader: "varying vec3 vM; void main() { vec4 m = vec4(0.0); vM = m.xyz; }",
   fragmentShader: `uniform vec3 sun; varying vec3 vM; void main() { vec3 col = vec3(1.0), N = normalize(cross(dFdx(vM), dFdy(vM))); float lit = ${LIT}; col *= lit; gl_FragColor = vec4(mix(col, fogC, 0.0), 1.0); }` });
 const ground = new THREE.ShaderMaterial({ uniforms: {}, vertexShader: "void main() {}", fragmentShader: "varying vec3 vW; void main() { vec3 col = vec3(1.0); gl_FragColor = vec4(mix(col, fogC, 0.0), 1.0); }" });
-L.patch(piece); L.patch(ground);
-const sources = { shadow: SHADERS.SHADOW_F, sky: SHADERS.SKY_F, ground_bake: SHADERS.GROUND_F, piece: piece.fragmentShader.replace(/varying /g, "in "), ground: ground.fragmentShader.replace(/varying /g, "in ") };
+const water = new THREE.ShaderMaterial({ uniforms: { tDiffuse: { value: null } }, vertexShader: "void main() {}", fragmentShader: "varying vec3 vW; void main() { vec3 col = vec3(1.0); gl_FragColor = vec4(mix(col, fogC, smoothstep(fogR.x, fogR.y, length(cameraPosition - vW))), 1.0); }" });
+L.patch(piece); L.patch(ground); L.patch(water);
+const sources = { shadow: SHADERS.SHADOW_F, sky: SHADERS.SKY_F, ground_bake: SHADERS.GROUND_F, piece: piece.fragmentShader.replace(/varying /g, "in "), ground: ground.fragmentShader.replace(/varying /g, "in "), water: water.fragmentShader.replace(/varying /g, "in ") };
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), "glsl-")); let bad = 0;
 for (const [name, src] of Object.entries(sources)) {
   const f = path.join(dir, name + ".frag"); fs.writeFileSync(f, PRE + src);

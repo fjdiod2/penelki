@@ -173,3 +173,8 @@ export function skyMix(s, n) {
   const a = Math.max(n[1], 0), b = Math.hypot(n[0], n[2]), d = Math.max(-n[1], 0);
   return (a * s.up + b * wall + d * 0.6 * wall) / Math.max(a + b + d, 1e-6);
 }
+
+// aerial perspective: the haze per colour channel, blue faster than red (air scatters blue the most), so things in the
+// middle distance turn bluish; close by none, far off all of it, as before. f: the haze's amount (0 .. 1) -> per channel
+export const AERIAL = [0.8, 0.95, 1.3];
+export const aerial = (f, k = AERIAL) => k.map((e) => 1 - Math.pow(1 - Math.max(0, Math.min(1, f)), e));

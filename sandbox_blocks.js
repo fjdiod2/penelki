@@ -284,6 +284,7 @@ export async function createBlockKit(fog) {
   const roofMat = new THREE.MeshBasicMaterial({ color: new THREE.Color().setRGB(0.085, 0.085, 0.095, THREE.LinearSRGBColorSpace), side: THREE.DoubleSide });
   const underMat = new THREE.MeshBasicMaterial({ color: new THREE.Color().setRGB(0.42, 0.41, 0.39, THREE.LinearSRGBColorSpace), side: THREE.DoubleSide });
   const hullMat = new THREE.MeshBasicMaterial({ visible: false, side: THREE.DoubleSide });
+  roofMat.userData.townLight = "up"; underMat.userData.townLight = "down";   // (shaded by the town: sandbox_lightgl.js)
   const quad = (c, y, pos, idx) => { const o = pos.length / 3; for (const q of c) pos.push(q[0], y, q[1]); idx.push(o, o + 1, o + 2, o, o + 2, o + 3); };
   function roofMesh(lay) {
     const grp = new THREE.Group(), p = [], i = [];

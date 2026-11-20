@@ -16,6 +16,7 @@ export function createTrees(scene) {
   const barkTex = photo("bark_atlas.jpg"); barkTex.wrapT = THREE.RepeatWrapping;
   const leafMat = new THREE.MeshBasicMaterial({ map: photo("leaf_atlas.png"), vertexColors: true, alphaTest: 0.4, alphaToCoverage: true, side: THREE.DoubleSide });
   const barkMat = new THREE.MeshBasicMaterial({ map: barkTex, vertexColors: true, side: THREE.DoubleSide });
+  leafMat.userData.townLight = barkMat.userData.townLight = true;     // (shaded by the town: sandbox_lightgl.js)
   const geo = (p, c, u, i) => { const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.BufferAttribute(p, 3)); g.setAttribute("color", new THREE.BufferAttribute(c, 3)); g.setAttribute("uv", new THREE.BufferAttribute(u, 2)); g.setIndex(i); g.computeBoundingSphere(); return g; };
   const protos = TREE_NAMES.map((n, ni) => [...Array(VARIANTS)].map((_, v) => {
     const t = makeTree(n, 7000 + ni * 1000 + v * 37);
@@ -178,7 +179,7 @@ export function createGround(scene, fog, sky) {
 
   // reeds: crossed photo cards, scattered over the painted reed beds (and into the shallow edge of their pools)
   const reedTex = TL.load(F + "reed.png"); reedTex.colorSpace = THREE.SRGBColorSpace;
-  const reedMat = new THREE.MeshBasicMaterial({ map: reedTex, alphaTest: 0.4, alphaToCoverage: true, side: THREE.DoubleSide });
+  const reedMat = new THREE.MeshBasicMaterial({ map: reedTex, alphaTest: 0.4, alphaToCoverage: true, side: THREE.DoubleSide }); reedMat.userData.townLight = true;
   const reedGeo = new THREE.BufferGeometry(); {
     const p = [], u = [], ix = []; for (let q = 0; q < 2; q++) { const a = q * Math.PI / 2, cx = Math.cos(a) * 0.5, cz = Math.sin(a) * 0.5, k = q * 4;
       p.push(-cx, 0, -cz, cx, 0, cz, cx, 1, cz, -cx, 1, -cz); u.push(0, 0, 1, 0, 1, 1, 0, 1); ix.push(k, k + 1, k + 2, k, k + 2, k + 3); }

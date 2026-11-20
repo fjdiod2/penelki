@@ -13,6 +13,8 @@ import { createClouds } from "./sandbox_sky.js";
 import { entranceDetails, facadeDishes, roofAntennas, blockField, PATH_W } from "./sandbox_details.js";
 import { yardCells, yardLayout, CELL } from "./sandbox_yards.js";
 import { createTrees, createGround, TREE_NAMES, TREE_SETS, LAND, WATER_Y } from "./sandbox_nature.js";
+import { heightGrid } from "./sandbox_light.js";
+import { createTownLight } from "./sandbox_lightgl.js";
 
 const Q = new URLSearchParams(location.search);
 const SAVE_KEY = "panelki_sandbox_v1";
@@ -33,6 +35,7 @@ controls.target.set(...HOME.target); controls.update();
 const kit = await createBlockKit(FOG);
 const { W, H, PL } = kit;
 const ground = createGround(scene, FOG, SKY), trees = createTrees(scene);
+const townLight = createTownLight(renderer); let lightDirty = true, lightGrid = null;     // sun shadows and sky (sandbox_light*.js): baked after changes
 // props (benches, lamps, cars, poles...): the simulator's props.json. The game also works without them (not deployed yet)
 let props = null; const propAttach = {};
 // They come from the CDN (DigitalOcean Spaces, bucket panelki-assets, versioned: a new set of models goes to v2/);
@@ -83,7 +86,7 @@ const cache = new Map();                          // block id -> { key, lay, hul
 let city = null;
 function dropCache(id) { const c = cache.get(id); if (!c) return; hullGroup.remove(c.hull); roofGroup.remove(c.roof); kit.disposeGroup(c.hull); kit.disposeGroup(c.roof); cache.delete(id); }
 function rebuild() {
-  reindex(); featMemo = null;
+  reindex(); featMemo = null; lightDirty = true;
   const lays = [], seen = new Set();
   for (const b of S.blocks) {
     const base = baseOf(b), key = JSON.stringify([b.pts, b.closed, b.fl, b.fin, b.seed, isGround(b), base, b.D, b.cuts]);
@@ -987,17 +990,26 @@ export const now = {
   get S() { return S; }, get draft() { return draft; }, get action() { return action; }, get sel() { return sel; },
   get busy() { return !!(draft || action); }, get input() { return prof.name; }, get lastFloors() { return lastFloors; },
 };
+// the blocks as prisms on the height map -> the light's textures; and the light put into any material new since
+function bakeLight() {
+  const prisms = S.blocks.map((b) => {
+    const holes = cutRects(b).map((r) => { const u = V.norm(V.sub(b.pts[1], b.pts[0])); return { a: b.pts[0], u, lf: V.left(u), s0: r.s0, s1: r.s1, w0: r.w0, w1: r.w1, y0: town.floorY(b, r.f0), y1: town.floorY(b, r.f1) }; });
+    return { pts: b.pts, closed: !!b.closed, D: b.D || 12, y0: baseOf(b), y1: topOf(b), holes };
+  });
+  lightGrid = heightGrid(prisms, { nMax: matchMedia("(pointer: coarse)").matches ? 512 : 1024 }); townLight.update(lightGrid); townLight.patchAll(scene);
+}
 async function start() {
   if (!(await load())) { ground.sync(); flash(now.input === "touch" ? "Tap the grass for your first block" : "Drag on the grass to lay your first block"); }
   rebuild(); setHaze(atmos.haze); Object.assign(clouds.state, atmos.clouds);
   addEventListener("beforeunload", save);
   let last = performance.now(), hazeTick = 0;
-  window.__sandbox = { S: () => S, D: () => draft, A: () => action && action.kind, pickAt: (x, y) => { mouse.x = x; mouse.y = y; const a = pick(); return a && { p: a.p, y: a.y, block: a.block && a.block.id, roof: a.roof }; }, rebuild, kit, camera, controls, topOf, scene, streetRoot, ground, renderer, draw: () => clouds.render(scene, camera), clouds, allRoads: () => allRoads, yardRegions: () => yardRegions.map((r) => ({ id: r.y.id, area: r.Y.area })), entrances: () => cityLays.flatMap(({ lay }) => lay.out.filter((p) => p.pc === "entrance").map((p) => ({ q: p.q, n: p.n }))) };
+  window.__sandbox = { light: townLight, lightGrid: () => lightGrid, S: () => S, D: () => draft, A: () => action && action.kind, pickAt: (x, y) => { mouse.x = x; mouse.y = y; const a = pick(); return a && { p: a.p, y: a.y, block: a.block && a.block.id, roof: a.roof }; }, rebuild, kit, camera, controls, topOf, scene, streetRoot, ground, renderer, draw: () => clouds.render(scene, camera), clouds, allRoads: () => allRoads, yardRegions: () => yardRegions.map((r) => ({ id: r.y.id, area: r.Y.area })), entrances: () => cityLays.flatMap(({ lay }) => lay.out.filter((p) => p.pc === "entrance").map((p) => ({ q: p.q, n: p.n }))) };
   renderer.setAnimationLoop((t) => {
     const dt = Math.min(0.05, (t - last) / 1000); last = t;
     emit("frame", dt); if (!freeCam) controls.update();
     if (action && action.kind === "trees" && mouse.in && t - action.last > 70) { action.last = t; const at = pick(); if (at && plantAt(at)) { action.changed = true; trees.rebuild(S.trees, treeY); updateStats(); } showHover(); }
-    if (++hazeTick % 60 === 0) applyHaze();       // (materials made since the haze was set)
+    if (++hazeTick % 60 === 0) { applyHaze(); townLight.patchAll(scene); }    // (materials made since the haze was set)
+    if (lightDirty && !streetsHeld) { lightDirty = false; bakeLight(); }      // (not while a drag holds the streets: once it ends)
     ground.update(t / 1000); clouds.render(scene, camera, t / 1000);
   });
 }

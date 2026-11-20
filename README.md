@@ -52,6 +52,8 @@ keys are in `.env` (ignored by git).
 - `sandbox_photo.js` — Walk: stand in the town (a street, a roof, a ledge) at eye height, look about, take pictures
 - `sandbox_walk.js` — the arithmetic of walking: lenses, looking, sliding along walls (tested in Node)
 - `sandbox_sky.js` — the low cloud deck: a pass over the finished picture that uses its depth (no material had to change)
+- `sandbox_light.js` — light that knows about the town (pure, tested): a height map, sun shadows (two shaded ranges per cell, so sun comes through holes), how much sky a spot sees
+- `sandbox_lightgl.js` — the same baked on the GPU when the town changes, and put into the materials' shaders (without editing `apartments.js` or `props.js`)
 - `sandbox_handles.js` — the touch arithmetic (two-finger gestures, where handles go), tested in Node
 - `sandbox_blocks.js` — panel blocks: layout of the pieces, holes, merging of blocks that run into each other
 - `sandbox_nature.js` — trees, the painted ground (grass, fields, bog, reeds, water, paths) and the water mirror
